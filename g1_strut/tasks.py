@@ -1,5 +1,6 @@
-"""Task `g1_dwaq_strut`: the G1DWAQ stair task + phase-locked strut dance tracking for the upper body."""
+"""Tasks `g1_dwaq_strut` / `g1_dwaq_groove`: the G1DWAQ stair task + phase-locked upper-body dance tracking."""
 
+import torch
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
@@ -8,7 +9,7 @@ from legged_lab.envs.g1.g1_dwaq_config import G1DwaqAgentCfg, G1DwaqEnvCfg, G1Dw
 from legged_lab.envs.g1.g1_dwaq_env import G1DwaqEnv
 from legged_lab.utils.task_registry import task_registry
 
-from g1_strut import dance, rewards
+from g1_strut import dance, groove, rewards
 
 UPPER_BODY = SceneEntityCfg("robot", joint_names=dance.JOINTS, preserve_order=True)
 STAIR_SHARE = 0.7  # fraction of terrain tiles that are stairs (upstream: 0.4)
@@ -51,3 +52,40 @@ class G1StrutAgentCfg(G1DwaqAgentCfg):
 
 
 task_registry.register("g1_dwaq_strut", G1DwaqEnv, G1StrutEnvCfg(), G1StrutAgentCfg())
+
+
+class G1DanceEnv(G1DwaqEnv):
+    """G1DwaqEnv + a dance clock: sin/cos of the phrase phase appended to the actor obs (and after the actor block
+    in the critic obs), so the policy knows which beat of the 8-beat phrase comes next."""
+
+    @property
+    def dance_phase(self) -> torch.Tensor:
+        t = self.episode_length_buf.float() * self.step_dt  # same clock as the gait phase
+        return (t % groove.PERIOD) / groove.PERIOD
+
+    def compute_current_observations(self):
+        actor, critic = super().compute_current_observations()
+        ph = 2 * torch.pi * self.dance_phase
+        clock = torch.stack([torch.sin(ph), torch.cos(ph)], dim=-1)
+        n = actor.shape[1]
+        return torch.cat([actor, clock], dim=-1), torch.cat([critic[:, :n], clock, critic[:, n:]], dim=-1)
+
+
+@configclass
+class G1GrooveRewardCfg(G1StrutRewardCfg):
+    strut_dance = None
+    groove_dance = RewTerm(func=rewards.groove_dance_tracking, weight=2.5, params={"std": 0.3, "asset_cfg": UPPER_BODY})
+
+
+@configclass
+class G1GrooveEnvCfg(G1StrutEnvCfg):
+    reward = G1GrooveRewardCfg()
+
+
+@configclass
+class G1GrooveAgentCfg(G1StrutAgentCfg):
+    experiment_name: str = "g1_dwaq_groove"
+    wandb_project: str = "g1_dwaq_groove"
+
+
+task_registry.register("g1_dwaq_groove", G1DanceEnv, G1GrooveEnvCfg(), G1GrooveAgentCfg())

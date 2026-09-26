@@ -17,7 +17,7 @@ from isaaclab.app import AppLauncher
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument("--task", type=str, default="g1_dwaq_strut")
+parser.add_argument("--task", type=str, default="g1_dwaq_groove")
 parser.add_argument("--checkpoint", type=str, required=True)
 parser.add_argument("--out", type=str, default="output/isaac_strut.npz")
 parser.add_argument("--vx", type=float, default=0.9)
@@ -100,6 +100,7 @@ def main():
     obs, obs_hist = env.get_observations()
     max_z, max_x, fell_t, sq_err, n = 0.0, 0.0, None, 0.0, 0
     start_y = float(terrain.env_origins[0, 1])
+    ref_fn = rewards.groove_dance_reference if hasattr(env, "dance_phase") else rewards.strut_dance_reference
     for k in range(int(args_cli.seconds / env.step_dt)):
         w, qx, qy, qz = robot.data.root_quat_w[0].tolist()
         yaw = math.atan2(2 * (w * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
@@ -116,7 +117,7 @@ def main():
             fell_t = t
         max_z, max_x = max(max_z, float(pos[2])), max(max_x, float(pos[0]) - start_x)
         if t > 1.0:
-            err = robot.data.joint_pos[0, upper_ids] - rewards.strut_dance_reference(env)[0]
+            err = robot.data.joint_pos[0, upper_ids] - ref_fn(env)[0]
             sq_err += float(torch.mean(err**2)); n += 1
         body_pos.append(robot.data.body_pos_w[0].cpu().numpy().copy())
         body_quat.append(robot.data.body_quat_w[0].cpu().numpy().copy())  # (w, x, y, z)
@@ -141,7 +142,7 @@ def main():
     print(f" reached top        : {max_z > top + 0.6}")
     print(f" distance covered   : {max_x:.2f} m (stairs end at ~{climb + 0.35:.2f} m)")
     print(f" fell / reset       : {fell_t is not None}" + (f" (t={fell_t:.2f}s)" if fell_t else ""))
-    print(f" upper-body RMS err : {rms:.3f} rad vs strut reference")
+    print(f" upper-body RMS err : {rms:.3f} rad vs {ref_fn.__name__.split('_')[0]} reference")
     print(f" rollout            : {args_cli.out}")
     print("=" * 64)
 

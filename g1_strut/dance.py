@@ -47,12 +47,13 @@ _HALF = [
 N_SAMPLES = 400
 
 
-def _mirror_arm(pose):
+def mirror_arm(pose):
     return {k: (-v if k in _MIRROR_NEG else v) for k, v in pose.items()}
 
 
-def _vector(right, left_as_right, yaw, roll):
-    left = _mirror_arm(left_as_right)
+def vector(right, left_as_right, yaw, roll):
+    """Pose vector in JOINTS order; the left arm is given as a right-arm pose and mirrored."""
+    left = mirror_arm(left_as_right)
     return np.array([yaw, roll] + [left[k] for k in ARM] + [right[k] for k in ARM])
 
 
@@ -61,10 +62,10 @@ def keyframes():
     phases, poses = [], []
     for ph, right, left, yaw, roll in _HALF:
         phases.append(ph)
-        poses.append(_vector(right, left, yaw, roll))
+        poses.append(vector(right, left, yaw, roll))
     for ph, right, left, yaw, roll in _HALF:  # mirror: left arm does what the right arm did
         phases.append(ph + 0.5)
-        poses.append(_vector(left, right, -yaw, -roll))
+        poses.append(vector(left, right, -yaw, -roll))
     return np.array(phases), np.array(poses)
 
 

@@ -5,6 +5,7 @@
 
 Same flow as TienKung-Lab/legged_lab/scripts/train.py, plus --init_checkpoint: load policy weights (not the
 optimizer or iteration counter) from the pretrained stair policy, so fine-tuning starts from a stair climber.
+If the task has extra observations (g1_dwaq_groove's dance clock), the weights are expanded (warmstart.py).
 """
 import argparse
 import os
@@ -40,6 +41,7 @@ from legged_lab.utils.cli_args import update_rsl_rl_cfg  # noqa: E402
 
 import g1_strut.tasks  # noqa: E402,F401  (registers g1_dwaq_strut)
 from g1_strut import chown_to_host  # noqa: E402
+from g1_strut.warmstart import load_expanded  # noqa: E402
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -63,7 +65,10 @@ def main():
         runner.load(path)
     elif args_cli.init_checkpoint:
         print(f"[INFO] initializing policy from {args_cli.init_checkpoint}")
-        runner.alg.policy.load_state_dict(torch.load(args_cli.init_checkpoint, weights_only=False)["model_state_dict"])
+        src = torch.load(args_cli.init_checkpoint, weights_only=False, map_location="cpu")["model_state_dict"]
+        old_obs = src["decoder.4.weight"].shape[0]
+        for line in load_expanded(runner.alg.policy, src, old_obs, env.cfg.robot.dwaq_obs_history_length):
+            print(f"[INFO] warm start expanded {line}")
 
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
