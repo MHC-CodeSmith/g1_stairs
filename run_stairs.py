@@ -46,6 +46,18 @@ def load_upstream():
     return module
 
 
+GROOVE_PERIOD = 3.2  # g1_strut/groove.py: 8 beats, one per footstep (0.4 s)
+
+
+def _with_dance_clock(get_current_obs):
+    """g1_dwaq_groove policies (102 obs) also observe sin/cos of the 3.2 s phrase phase (g1_strut/tasks.G1DanceEnv),
+    on the same clock as the gait phase."""
+    def wrapped(self):
+        ph = 2 * np.pi * (self.gait_phase_time % GROOVE_PERIOD) / GROOVE_PERIOD
+        return np.concatenate([get_current_obs(self), [np.sin(ph), np.cos(ph)]]).astype(np.float32)
+    return wrapped
+
+
 def _gait_phase_training_order(self):
     """Gait-phase obs in the order the policy was trained with.
 
@@ -279,6 +291,11 @@ def main():
     up = load_upstream()
     cfg = up.G1DwaqSim2SimCfg()
     cfg.sim.sim_duration = args.duration
+    # observation size from the checkpoint (decoder reconstructs the obs): 100 = stair/strut policy, 102 = groove
+    num_obs = torch.load(args.checkpoint, map_location="cpu", weights_only=False)["model_state_dict"]["decoder.4.weight"].shape[0]
+    if num_obs != cfg.sim.num_obs_per_step:
+        cfg.sim.num_obs_per_step = num_obs
+        up.G1DwaqMujocoRunner.get_current_obs = _with_dance_clock(up.G1DwaqMujocoRunner.get_current_obs)
     r = up.G1DwaqMujocoRunner(cfg=cfg, checkpoint_path=args.checkpoint, model_path=args.scene)
     stairs = StairProfile(r.model)
     if args.mode == "record":
