@@ -1,0 +1,29 @@
+# Build:   docker compose build
+# Record:  docker compose run --rm record           -> ./output/g1_stairs.mp4
+# Viewer:  docker compose up viewer    (runs as your uid, which the X server already trusts: SI:localuser)
+services:
+  record:
+    image: g1-stairs:latest
+    build: { context: ., dockerfile: docker/Dockerfile }
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "1"
+      NVIDIA_DRIVER_CAPABILITIES: all
+      MUJOCO_GL: egl
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes: [ "./output:/output" ]
+    command: ["--mode", "record", "--out", "/output/g1_stairs.mp4"]
+
+  viewer:
+    image: g1-stairs:latest
+    runtime: nvidia
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "0"
+      NVIDIA_DRIVER_CAPABILITIES: all
+      DISPLAY: ${DISPLAY:-:1}
+      MUJOCO_GL: glfw
+    volumes: [ "/tmp/.X11-unix:/tmp/.X11-unix:rw" ]
+    network_mode: host
+    ipc: host
+    command: ["--mode", "viewer", "--loop"]

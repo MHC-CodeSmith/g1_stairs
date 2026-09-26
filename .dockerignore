@@ -1,0 +1,7 @@
+*
+!run_stairs.py
+!G1DWAQ_Lab/TienKung-Lab/legged_lab/scripts/sim2sim_g1_dwaq.py
+!G1DWAQ_Lab/TienKung-Lab/legged_lab/assets/unitree/g1/mjcf
+!G1DWAQ_Lab/TienKung-Lab/logs/g1_dwaq/2026-01-16_00-46-00/model_9999.pt
+!scenes
+!.gitmodules
