@@ -42,7 +42,20 @@ def load_upstream():
     spec = importlib.util.spec_from_file_location("sim2sim_g1_dwaq", UPSTREAM)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    module.G1DwaqMujocoRunner.compute_gait_phase = _gait_phase_training_order
     return module
+
+
+def _gait_phase_training_order(self):
+    """Gait-phase obs in the order the policy was trained with.
+
+    Training (g1_dwaq_env.compute_current_observations) appends sin(2*pi*leg_phase) then cos(2*pi*leg_phase),
+    i.e. [sin_L, sin_R, cos_L, cos_R]; upstream sim2sim_g1_dwaq.py sends [sin_L, cos_L, sin_R, cos_R].
+    """
+    period, offset = self.cfg.gait_phase.period, self.cfg.gait_phase.offset
+    phase = np.array([(self.gait_phase_time % period) / period,
+                      ((self.gait_phase_time / period) + offset) % 1.0])
+    return np.concatenate([np.sin(2 * np.pi * phase), np.cos(2 * np.pi * phase)]).astype(np.float32)
 
 
 class StairProfile:
