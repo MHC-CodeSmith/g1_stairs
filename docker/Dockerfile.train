@@ -1,0 +1,33 @@
+# Isaac Sim 5.1 + Isaac Lab 2.3.2 + TienKung-Lab (G1DWAQ training code, its rsl_rl fork) for the strut fine-tune.
+# The repo itself (g1_strut/, logs/) is mounted at /workspace/g1_stairs at run time.
+FROM nvcr.io/nvidia/isaac-sim:5.1.0
+
+USER root
+ENV ACCEPT_EULA=Y PRIVACY_CONSENT=Y OMNI_KIT_ALLOW_ROOT=1 ISAACSIM_PATH=/isaac-sim \
+    DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends git build-essential cmake ffmpeg ncurses-term \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch v2.3.2 https://github.com/isaac-sim/IsaacLab.git /workspace/isaaclab \
+    && ln -s /isaac-sim /workspace/isaaclab/_isaac_sim
+# same sequence as Isaac Lab's docker/Dockerfile.base
+# flatdict 4.0.1 (isaaclab dep) is an sdist whose setup.py needs pkg_resources, gone from setuptools>=81: prebuild it.
+RUN cd /workspace/isaaclab && ./isaaclab.sh -p -m pip install toml "setuptools<81" \
+    && ./isaaclab.sh -p -m pip install --no-build-isolation flatdict==4.0.1 \
+    && apt-get update && ./isaaclab.sh -p tools/install_deps.py apt source && rm -rf /var/lib/apt/lists/* \
+    && ./isaaclab.sh --install none \
+    && ./isaaclab.sh -p -m pip show isaaclab isaaclab_tasks isaaclab_rl > /dev/null   # isaaclab.sh swallows pip failures
+
+COPY G1DWAQ_Lab/TienKung-Lab /workspace/TienKung-Lab
+# isaaclab_rl's rsl_rl wrapper imports tensordict (normally pulled by rsl-rl-lib 3.x; the fork is 2.3.1); --no-deps
+# keeps pip away from torch.
+# TienKung-Lab's setup.py wants pynput (keyboard teleop, needs X) and pins mujoco; install it without deps.
+RUN /isaac-sim/python.sh -m pip install --no-cache-dir -e /workspace/TienKung-Lab/rsl_rl \
+    && /isaac-sim/python.sh -m pip install --no-cache-dir --no-deps -e /workspace/TienKung-Lab \
+    && /isaac-sim/python.sh -m pip install --no-cache-dir tensorboard matplotlib imageio imageio-ffmpeg "numpy<2" \
+        orjson pyvers importlib_metadata \
+    && /isaac-sim/python.sh -m pip install --no-cache-dir --no-deps tensordict==0.11.0
+
+WORKDIR /workspace/g1_stairs
+ENTRYPOINT ["/isaac-sim/python.sh"]
+CMD ["g1_strut/train.py", "--headless"]

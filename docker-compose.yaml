@@ -1,5 +1,6 @@
 # Build:   docker compose build
 # Record:  docker compose run --rm record           -> ./output/g1_stairs.mp4
+# Train:   docker compose run --rm train      (Isaac Sim, GPU 1; logs -> ./logs/g1_dwaq_strut)
 # Viewer:  docker compose up viewer    (runs as your uid, which the X server already trusts: SI:localuser)
 services:
   record:
@@ -27,3 +28,28 @@ services:
     network_mode: host
     ipc: host
     command: ["--mode", "viewer", "--loop"]
+
+  train:
+    image: g1-strut-isaaclab:latest
+    build: { context: ., dockerfile: docker/Dockerfile.train }
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "1"
+      NVIDIA_DRIVER_CAPABILITIES: all
+      HOST_UID: ${UID:-1000}
+      HOST_GID: ${GID:-1000}
+    volumes:
+      - ./:/workspace/g1_stairs
+      - isaac-cache-kit:/isaac-sim/kit/cache
+      - isaac-cache-ov:/root/.cache/ov
+      - isaac-cache-glcache:/root/.cache/nvidia/GLCache
+      - isaac-compute-cache:/root/.nv/ComputeCache
+    ipc: host
+    command: ["g1_strut/train.py", "--headless", "--num_envs", "4096",
+              "--init_checkpoint", "/workspace/TienKung-Lab/logs/g1_dwaq/2026-01-16_00-46-00/model_9999.pt"]
+
+volumes:
+  isaac-cache-kit:
+  isaac-cache-ov:
+  isaac-cache-glcache:
+  isaac-compute-cache:
