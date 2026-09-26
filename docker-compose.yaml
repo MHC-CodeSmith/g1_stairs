@@ -1,6 +1,7 @@
 # Build:   docker compose build
 # Record:  docker compose run --rm record           -> ./output/g1_stairs.mp4
 # Train:   docker compose run --rm train      (Isaac Sim, GPU 1; logs -> ./logs/g1_dwaq_strut)
+# Video:   g1_strut/make_isaac_video.sh <checkpoint> <name>   (-> output/<name>.mp4)
 # Viewer:  docker compose up viewer    (runs as your uid, which the X server already trusts: SI:localuser)
 services:
   record:
@@ -47,6 +48,21 @@ services:
     ipc: host
     command: ["g1_strut/train.py", "--headless", "--num_envs", "4096",
               "--init_checkpoint", "/workspace/TienKung-Lab/logs/g1_dwaq/2026-01-16_00-46-00/model_9999.pt"]
+
+  render:   # Isaac Sim 6.0 RTX: replays rollouts from `train` (5.1's renderer crashes on driver 595)
+    image: nvcr.io/nvidia/isaac-sim:6.0.0
+    runtime: nvidia
+    user: root
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "0"
+      NVIDIA_DRIVER_CAPABILITIES: all
+      ACCEPT_EULA: "Y"
+      PRIVACY_CONSENT: "Y"
+      OMNI_KIT_ALLOW_ROOT: "1"
+    volumes: [ "./:/workspace/g1_stairs" ]
+    working_dir: /workspace/g1_stairs
+    entrypoint: ["/isaac-sim/python.sh"]
+    command: ["g1_strut/render_isaac6.py", "--help"]
 
 volumes:
   isaac-cache-kit:
