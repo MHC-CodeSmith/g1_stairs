@@ -3,11 +3,12 @@
   python g1_strut/rollout_isaac.py --checkpoint logs/g1_dwaq_strut/<run>/model_XXXX.pt --out output/isaac_strut.npz
 
 One pyramid-stairs tile (default 0.15 m rise / 0.31 m tread: 8 steps up, platform, 8 steps down). The robot spawns on
-the flat border facing +x and is commanded straight ahead. The .npz holds every link's world pose per control step and
-the terrain mesh; g1_strut/render_isaac6.py replays it in Isaac Sim 6.0 for video (Isaac Sim 5.1's RTX renderer
+the flat border facing +x; an autopilot holds heading 0 and steers back to the centre line with vy. The .npz holds
+every link's world pose per control step and the terrain mesh; g1_strut/render_isaac6.py replays it in Isaac Sim 6.0 for video (Isaac Sim 5.1's RTX renderer
 crashes on this host's 595 driver; its physics is fine).
 """
 import argparse
+import math
 import os
 import sys
 
@@ -55,10 +56,13 @@ def make_env():
     env_cfg.domain_rand.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
     env_cfg.domain_rand.events.reset_base.params["velocity_range"] = {}
     env_cfg.commands.rel_standing_envs = 0.0
-    env_cfg.commands.heading_command = True
+    # Commands come from the autopilot in main() (as in run_stairs.py): heading held at 0, lateral drift
+    # corrected with vy. The generator only resamples (never, here) and leaves vel_command_b alone otherwise.
+    env_cfg.commands.heading_command = False
+    env_cfg.commands.ranges.heading = None
     env_cfg.commands.ranges.lin_vel_x = (args_cli.vx, args_cli.vx)
     env_cfg.commands.ranges.lin_vel_y = (0.0, 0.0)
-    env_cfg.commands.ranges.heading = (0.0, 0.0)
+    env_cfg.commands.ranges.ang_vel_z = (0.0, 0.0)
     env_cfg.commands.resampling_time_range = (1e6, 1e6)
     env_cfg.commands.debug_vis = False
     env_cfg.scene.terrain_type = "generator"
@@ -95,7 +99,13 @@ def main():
     body_pos, body_quat = [], []
     obs, obs_hist = env.get_observations()
     max_z, max_x, fell_t, sq_err, n = 0.0, 0.0, None, 0.0, 0
+    start_y = float(terrain.env_origins[0, 1])
     for k in range(int(args_cli.seconds / env.step_dt)):
+        w, qx, qy, qz = robot.data.root_quat_w[0].tolist()
+        yaw = math.atan2(2 * (w * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
+        y_rel = float(robot.data.root_pos_w[0, 1]) - start_y
+        env.command_generator.vel_command_b[:] = torch.tensor(
+            [args_cli.vx, max(-0.3, min(0.3, -1.0 * y_rel)), max(-1.5, min(1.5, -2.0 * yaw))], device=env.device)
         with torch.inference_mode():
             actions = policy.act_inference(obs, obs_hist.to(env.device))
             obs, _, dones, extras = env.step(actions)
