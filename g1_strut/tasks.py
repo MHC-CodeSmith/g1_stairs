@@ -74,7 +74,11 @@ class G1DanceEnv(G1DwaqEnv):
 @configclass
 class G1GrooveRewardCfg(G1StrutRewardCfg):
     strut_dance = None
-    groove_dance = RewTerm(func=rewards.groove_dance_tracking, weight=2.5, params={"std": 0.3, "asset_cfg": UPPER_BODY})
+    # Two kernels: with one tight kernel (std 0.3) the 8 widely spread poses left a ~0.4 rad error where the reward is
+    # flat, and the arms settled on the average pose. The coarse one keeps a gradient far from the target, the fine
+    # one pays for hitting the pose.
+    groove_coarse = RewTerm(func=rewards.groove_dance_tracking, weight=1.5, params={"std": 0.6, "asset_cfg": UPPER_BODY})
+    groove_fine = RewTerm(func=rewards.groove_dance_tracking, weight=2.0, params={"std": 0.25, "asset_cfg": UPPER_BODY})
 
 
 @configclass
