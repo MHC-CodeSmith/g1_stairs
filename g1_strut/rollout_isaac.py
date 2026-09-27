@@ -120,6 +120,10 @@ def main():
         t = (k + 1) * env.step_dt
         if bool(dones[0]) and fell_t is None and t < args_cli.seconds - env.step_dt:
             fell_t = t
+            cs = env.contact_sensor
+            f = torch.norm(cs.data.net_forces_w_history[0], dim=-1).max(0).values
+            touching = [n for n, v in zip(cs.body_names, f.tolist()) if v > 1.0 and "ankle" not in n]
+            print(f"[reset] t={t:.2f}s pelvis z={pos[2]:.2f} bodies in contact: {touching}", flush=True)
         max_z, max_x = max(max_z, float(pos[2])), max(max_x, float(pos[0]) - start_x)
         if t > 1.0:
             err = robot.data.joint_pos[0, upper_ids] - ref_fn(env)[0]

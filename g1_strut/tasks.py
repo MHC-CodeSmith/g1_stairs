@@ -126,6 +126,15 @@ class G1ClipDanceEnv(G1DanceEnv):
         alpha = torch.clamp(t / self.BLEND_IN, 0.0, 1.0).unsqueeze(1)
         return default + alpha * (ref - default)
 
+    def check_reset(self):
+        """Fall = tilted past ~57 deg or pelvis within 0.35 m of the ground under it. Upstream resets on any torso
+        contact, which here also fires when a dancing arm brushes the chest (self-collision), with the robot upright."""
+        tilted = self.robot.data.projected_gravity_b[:, 2] > -0.55
+        ground = torch.nan_to_num(self.height_scanner.data.ray_hits_w[..., 2], nan=0.0, posinf=0.0, neginf=0.0).mean(1)
+        low = self.robot.data.root_pos_w[:, 2] - ground < 0.35
+        time_out = self.episode_length_buf >= self.max_episode_length
+        return tilted | low | time_out, time_out
+
     def step(self, actions: torch.Tensor):
         actions = actions.clone()
         target = self.dance_reference(self.LEAD)
@@ -137,6 +146,12 @@ class G1ClipDanceEnv(G1DanceEnv):
 class G1ClipRewardCfg(G1GrooveRewardCfg):
     groove_coarse = None  # arms are driven by the clip, nothing to learn there
     groove_fine = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        # arm/torso self-contacts come from the choreography the policy doesn't control; penalize leg bumps only
+        self.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
+            "contact_sensor", body_names=["pelvis", ".*_hip_.*", ".*_knee_.*"])
 
 
 @configclass
