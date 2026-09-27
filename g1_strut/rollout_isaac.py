@@ -17,11 +17,11 @@ from isaaclab.app import AppLauncher
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument("--task", type=str, default="g1_dwaq_groove")
+parser.add_argument("--task", type=str, default="g1_dwaq_bully")
 parser.add_argument("--checkpoint", type=str, required=True)
 parser.add_argument("--out", type=str, default="output/isaac_strut.npz")
 parser.add_argument("--vx", type=float, default=0.9)
-parser.add_argument("--seconds", type=float, default=12.0)
+parser.add_argument("--seconds", type=float, default=14.0)
 parser.add_argument("--step_height", type=float, default=0.15)
 parser.add_argument("--step_width", type=float, default=0.31)
 AppLauncher.add_app_launcher_args(parser)
@@ -100,7 +100,12 @@ def main():
     obs, obs_hist = env.get_observations()
     max_z, max_x, fell_t, sq_err, n = 0.0, 0.0, None, 0.0, 0
     start_y = float(terrain.env_origins[0, 1])
-    ref_fn = rewards.groove_dance_reference if hasattr(env, "dance_phase") else rewards.strut_dance_reference
+    if hasattr(env, "dance_reference"):  # clip played on the arms: error = how well the PD follows it
+        def ref_fn(e):
+            return e.dance_reference()
+        ref_fn.__name__ = "clip_reference"
+    else:
+        ref_fn = rewards.groove_dance_reference if hasattr(env, "dance_phase") else rewards.strut_dance_reference
     for k in range(int(args_cli.seconds / env.step_dt)):
         w, qx, qy, qz = robot.data.root_quat_w[0].tolist()
         yaw = math.atan2(2 * (w * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
