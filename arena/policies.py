@@ -350,7 +350,19 @@ REGISTRY = {
     "holosoma_ppo": lambda: Holosoma("ppo"),
     "g1dwaq_stairs": Dwaq,
     "agile_vel_height": Agile,
+    "sonic": lambda: _sonic()(),
 }
+TRACKERS = ["sonic_tracking", "gmt", "twist"]   # take a reference clip: make_tracker(name, clip)
+
+
+def _sonic():
+    from arena.sonic import Sonic
+    return Sonic
+
+
+def make_tracker(name, clip) -> ArenaPolicy:
+    from arena.trackers import Gmt, Twist
+    return {"sonic_tracking": lambda: _sonic()(clip=clip), "gmt": lambda: Gmt(clip), "twist": lambda: Twist(clip)}[name]()
 
 
 def make(name) -> ArenaPolicy:

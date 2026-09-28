@@ -340,10 +340,167 @@ def check_holosoma(variant="fastsac", seconds=4.0):
     return report(f"holosoma_{variant}", oe, ae, n, arena.fallen())
 
 
+# ------------------------------------------------------------------------------------------------ trackers
+class _Stop(BaseException):
+    """Ends a repo's endless sim loop (their loops catch Exception)."""
+
+
+class _FakeViewer:
+    def __init__(self, *a, **k):
+        self.cam = types.SimpleNamespace(distance=0.0, lookat=None)
+        self.opt = types.SimpleNamespace(flags={})
+        self.user_scn = types.SimpleNamespace(ngeom=0)
+
+    def render(self):
+        pass
+
+    def sync(self):
+        pass
+
+    def read_pixels(self):
+        return np.zeros((8, 8, 3), np.uint8)
+
+    def close(self):
+        pass
+
+
+def _tracker_state(m, d, t):
+    """State with the IMU values these repos read: MuJoCo sensordata, which mj_step computes before integrating, so
+    it lags qpos/qvel by one physics step."""
+    names, qadr, vadr = joint_index(m)
+    pelvis = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "pelvis")
+    torso = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "torso_link")
+    st = state_from(m, d, pelvis, torso, qadr, vadr, names, t)
+    st.base_quat = d.sensor("orientation").data.copy()
+    st.ang_vel_b = d.sensor("angular-velocity").data.copy()
+    return st
+
+
+def check_gmt(seconds=4.0, motion="walk_stand.pkl"):
+    """GMT's own sim2sim.py HumanoidEnv.run() (viewer stubbed) on its own g1.xml; its policy call is wrapped to
+    compare every observation and action with the adapter's, computed from the same MjData."""
+    import torch
+    from arena.trackers import GMT_ROOT, Clip, Gmt
+    root = GMT_ROOT
+    sys.modules["mujoco_viewer"] = types.SimpleNamespace(MujocoViewer=_FakeViewer)
+    sys.path.insert(0, root)
+    ns = {"__name__": "gmt_sim2sim"}             # module name for torch.jit.script
+    path = os.path.join(root, "sim2sim.py")
+    exec(compile(open(path).read().replace('if __name__ == "__main__":', "if False:"), path, "exec"), ns)
+    cwd = os.getcwd()
+    os.chdir(root)
+    try:
+        env = ns["HumanoidEnv"]("assets/pretrained_checkpoints/pretrained.pt", os.path.join("assets/motions", motion),
+                                device="cpu", record_video=True)
+    finally:
+        os.chdir(cwd)
+    env.sim_duration = seconds
+    ad = Gmt(Clip.from_gmt_pkl(os.path.join(root, "assets/motions", motion)))
+    ad.reset(None)
+    net, res = env.policy_jit, {"oe": 0.0, "ae": 0.0, "n": 0}
+    layout = [("mimic", 600), ("ang", 3), ("rp", 2), ("q", 23), ("qd", 23), ("last", 23), ("hist", 1480)]
+
+    def wrapped(obs_tensor):
+        st = _tracker_state(env.model, env.data, 0.0)
+        mine, _ = ad.obs(st)
+        ref = obs_tensor[0].numpy()
+        track("gmt", mine, ref, layout)
+        a_ref = net(obs_tensor)
+        tgt = ad.act(st)
+        res["oe"] = max(res["oe"], float(np.abs(mine - ref).max()))
+        res["ae"] = max(res["ae"], float(np.abs(tgt - (np.clip(a_ref[0].numpy(), -10, 10) * 0.5 + env.default_dof_pos)).max()))
+        res["n"] += 1
+        return a_ref
+
+    env.policy_jit = wrapped
+    env.run()
+    q = env.data.qpos[3:7]
+    fell = (1 - 2 * (q[1] ** 2 + q[2] ** 2)) < 0.5
+    return report("gmt", res["oe"], res["ae"], res["n"], fell)
+
+
+def check_twist(seconds=4.0, motion="walk_stand.pkl"):
+    """TWIST's own low-level sim loop (RealTimePolicyController.run, viewer stubbed) on its g1_sim2sim_with_wrist_roll.xml.
+    Its reference comes over Redis from the high-level server's build_mimic_obs; a fake Redis serves the same function
+    (moved from CUDA to CPU) on a GMT example clip. Observations and actions are compared at every policy call."""
+    import torch
+    from arena.trackers import GMT_ROOT, TWIST_ROOT, Clip, Twist, _motion_lib
+    root = os.path.join(TWIST_ROOT, "deploy_real")
+    sys.path.insert(0, root)
+    clip = Clip.from_gmt_pkl(os.path.join(GMT_ROOT, "assets/motions", motion))
+    ad = Twist(clip)
+    ad.reset(None)
+    ml = _motion_lib(os.path.join(TWIST_ROOT, "pose"), "pose.utils.motion_lib_pkl", clip)
+    hl = os.path.join(root, "server_high_level_motion_lib.py")
+    src = open(hl).read().replace('torch.device("cuda")', 'torch.device("cpu")')
+    tree = ast.parse(src)
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "build_mimic_obs")
+    hns = {"torch": torch, "np": np}
+    exec("from data_utils.rot_utils import euler_from_quaternion, quat_rotate_inverse, quat_rotate_inverse_torch", hns)
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), hl, "exec"), hns)
+    steps = torch.tensor([1], dtype=torch.int)
+    state = {"t": 0}
+
+    class FakeRedis:
+        def __init__(self, *a, **k):
+            pass
+
+        def set(self, *a, **k):
+            pass
+
+        def get(self, key):
+            if key == "action_mimic_g1":        # high-level server: one mimic frame per control step
+                import json
+                mo = hns["build_mimic_obs"](ml, state["t"], 0.02, steps)[0]
+                return json.dumps(np.asarray(mo).tolist())
+            return None
+
+    ll = os.path.join(root, "server_low_level_g1_sim.py")
+    lsrc = open(ll).read().replace('if __name__ == "__main__":', "if False:")
+    sys.modules.setdefault("redis", types.SimpleNamespace(Redis=FakeRedis))
+    sys.modules.setdefault("rich", types.SimpleNamespace(print=lambda *a, **k: None))   # console colouring only
+    ns = {"__name__": "twist_low_level_sim"}
+    exec(compile(lsrc, ll, "exec"), ns)
+    ns["redis"] = types.SimpleNamespace(Redis=FakeRedis)
+    ns["mjv"] = types.SimpleNamespace(launch_passive=lambda *a, **k: _FakeViewer())
+    ns["draw_root_velocity"] = lambda *a, **k: 0
+    ns["time"] = types.SimpleNamespace(time=lambda: 0.0, sleep=lambda s: None)
+    ctl = ns["RealTimePolicyController"](os.path.join(TWIST_ROOT, "assets/g1/g1_sim2sim_with_wrist_roll.xml"),
+                                         os.path.join(TWIST_ROOT, "assets/twist_general_motion_tracker.pt"), device="cpu")
+    net, res = ctl.policy, {"oe": 0.0, "ae": 0.0, "n": 0}
+    n_calls = int(seconds / 0.02)
+    layout = [("mimic", 31), ("ang", 3), ("rp", 2), ("q", 23), ("qd", 23), ("last", 23), ("hist", 1050)]
+
+    def wrapped(obs_tensor):
+        if res["n"] >= n_calls:
+            raise _Stop()
+        st = _tracker_state(ctl.model, ctl.data, 0.0)
+        mine, _ = ad.obs(st)
+        ref = obs_tensor[0].numpy()
+        track("twist", mine, ref, layout)
+        a_ref = net(obs_tensor)
+        tgt = ad.act(st)
+        ref_tgt = np.clip(a_ref[0].numpy(), -10, 10) * 0.5 + ctl.default_dof_pos
+        res["oe"] = max(res["oe"], float(np.abs(mine - ref).max()))
+        res["ae"] = max(res["ae"], float(np.abs(tgt[:23] - ref_tgt).max()))
+        res["n"] += 1
+        state["t"] += 1
+        return a_ref
+
+    ctl.policy = wrapped
+    try:
+        ctl.run()
+    except _Stop:
+        pass
+    q = ctl.data.qpos[3:7]
+    fell = (1 - 2 * (q[1] ** 2 + q[2] ** 2)) < 0.5
+    return report("twist", res["oe"], res["ae"], res["n"], fell)
+
+
 if __name__ == "__main__":
     results = []
     for fn in (check_rl_gym, check_playground, check_gr00t, lambda: check_g1walk("baseline"), lambda: check_g1walk("robust"),
-               lambda: check_holosoma("fastsac"), lambda: check_holosoma("ppo")):
+               lambda: check_holosoma("fastsac"), lambda: check_holosoma("ppo"), check_gmt, check_twist):
         try:
             results.append(fn())
         except Exception as e:
