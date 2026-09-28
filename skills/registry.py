@@ -1,0 +1,28 @@
+"""Load skills by name from skills/registry.yaml."""
+import os
+
+import yaml
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+with open(os.path.join(REPO, "skills", "registry.yaml")) as f:
+    SKILLS = yaml.safe_load(f)
+
+
+def path(name):
+    p = SKILLS[name]["path"]
+    return p if os.path.isabs(p) else os.path.join(REPO, p)
+
+
+def load(name, device="cpu"):
+    from skills import adapters
+
+    spec = SKILLS[name]
+    kind = spec["kind"]
+    if kind == "dwaq":
+        return adapters.DwaqPolicy(path(name), device=device, dance_period=spec.get("dance_period"), name=name,
+                                   extras=spec.get("extras"))
+    if kind == "agile_velocity_height":
+        return adapters.AgileVelocityHeight(path(name), device=device)
+    if kind == "clip":
+        return adapters.ClipUpperBody(path(name), device=device)
+    raise ValueError(f"unknown skill kind {kind}")
