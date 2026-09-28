@@ -1,5 +1,7 @@
 """Tasks `g1_dwaq_strut` / `g1_dwaq_groove`: the G1DWAQ stair task + phase-locked upper-body dance tracking."""
 
+import copy
+
 import torch
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
@@ -33,6 +35,8 @@ class G1StrutEnvCfg(G1DwaqEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        # the upstream config assigns a module-level TerrainGeneratorCfg; copy before editing so other tasks keep theirs
+        self.scene.terrain_generator = copy.deepcopy(self.scene.terrain_generator)
         subs = self.scene.terrain_generator.sub_terrains
         stairs = [k for k in subs if k.startswith("stairs")]
         other = sum(subs[k].proportion for k in subs if k not in stairs)

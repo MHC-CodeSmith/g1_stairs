@@ -21,6 +21,8 @@ parser.add_argument("--task", type=str, default="g1_dwaq_bully")
 parser.add_argument("--checkpoint", type=str, required=True)
 parser.add_argument("--out", type=str, default="output/isaac_strut.npz")
 parser.add_argument("--vx", type=float, default=0.9)
+parser.add_argument("--upper", type=str, default="bully",
+                    help="g1_body only: upper-body source from its motion library (bully, groove, strut, hold, random)")
 parser.add_argument("--seconds", type=float, default=14.0)
 parser.add_argument("--step_height", type=float, default=0.15)
 parser.add_argument("--step_width", type=float, default=0.31)
@@ -40,6 +42,11 @@ from legged_lab.envs import *  # noqa: E402,F401,F403
 from legged_lab.utils import task_registry  # noqa: E402
 
 import g1_strut.tasks  # noqa: E402,F401
+import g1_strut.body  # noqa: E402,F401  (registers g1_body)
+import rsl_rl.runners.dwaq_on_policy_runner as _runner_mod  # noqa: E402
+from g1_strut.distill import DistillDWAQPPO  # noqa: E402
+
+_runner_mod.DistillDWAQPPO = DistillDWAQPPO  # g1_body's agent config names it; the runner resolves it with eval()
 from g1_strut import chown_to_host, dance, rewards  # noqa: E402
 
 TILE = 8.0
@@ -100,7 +107,15 @@ def main():
     obs, obs_hist = env.get_observations()
     max_z, max_x, fell_t, sq_err, n = 0.0, 0.0, None, 0.0, 0
     start_y = float(terrain.env_origins[0, 1])
-    if hasattr(env, "dance_reference"):  # clip played on the arms: error = how well the PD follows it
+    if hasattr(env, "motion"):  # g1_body: pin the upper body to one motion-library source, from its start
+        m = env.motion
+        m.source[:] = m.names.index(args_cli.upper)
+        m.offset[:], m.speed[:] = 0.0, 1.0
+
+        def ref_fn(e):
+            return e.motion.targets(e.episode_length_buf.float() * e.step_dt)
+        ref_fn.__name__ = f"{args_cli.upper}_motion"
+    elif hasattr(env, "dance_reference"):  # clip played on the arms: error = how well the PD follows it
         def ref_fn(e):
             return e.dance_reference()
         ref_fn.__name__ = "clip_reference"

@@ -39,9 +39,14 @@ from legged_lab.envs import *  # noqa: E402,F401,F403  (registers upstream tasks
 from legged_lab.utils import task_registry  # noqa: E402
 from legged_lab.utils.cli_args import update_rsl_rl_cfg  # noqa: E402
 
-import g1_strut.tasks  # noqa: E402,F401  (registers g1_dwaq_strut)
+import g1_strut.tasks  # noqa: E402,F401  (registers g1_dwaq_strut/groove/bully)
+import g1_strut.body  # noqa: E402,F401  (registers g1_body)
+import rsl_rl.runners.dwaq_on_policy_runner as _runner_mod  # noqa: E402
+from g1_strut.distill import DistillDWAQPPO  # noqa: E402
+
+_runner_mod.DistillDWAQPPO = DistillDWAQPPO  # the runner resolves algorithm.class_name with eval() in its module
 from g1_strut import chown_to_host  # noqa: E402
-from g1_strut.warmstart import load_expanded  # noqa: E402
+from g1_strut.warmstart import load_expanded, load_mapped  # noqa: E402
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -52,6 +57,7 @@ def main():
     if args_cli.num_envs is not None:
         env_cfg.scene.num_envs = args_cli.num_envs
     agent_cfg = update_rsl_rl_cfg(agent_cfg, args_cli)
+    agent_cfg.device = args_cli.device  # learner on the sim device (AppLauncher's --device, default cuda:0)
     env_cfg.scene.seed = agent_cfg.seed
     env = task_registry.get_task_class(args_cli.task)(env_cfg, args_cli.headless)
 
@@ -59,6 +65,20 @@ def main():
     log_dir = os.path.join(log_root, datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                            + (f"_{agent_cfg.run_name}" if agent_cfg.run_name else ""))
     runner = DWAQOnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+    if isinstance(runner.alg, DistillDWAQPPO):
+        runner.alg.teacher_source = env
+        runner.alg.total_iterations = agent_cfg.max_iterations
+        base_log = runner.log
+
+        def log(locs, *a, **kw):  # the runner only records its own three losses
+            base_log(locs, *a, **kw)
+            extra = getattr(runner.alg, "last_losses", {})
+            for k, v in extra.items():
+                if runner.writer is not None:
+                    runner.writer.add_scalar(f"Loss/{k}", v, locs["it"])
+            print("  " + "  ".join(f"Loss/{k}: {v:.4f}" for k, v in extra.items()), flush=True)
+
+        runner.log = log
     if agent_cfg.resume:
         path = get_checkpoint_path(log_root, agent_cfg.load_run, agent_cfg.load_checkpoint)
         print(f"[INFO] resuming from {path}")
@@ -67,7 +87,13 @@ def main():
         print(f"[INFO] initializing policy from {args_cli.init_checkpoint}")
         src = torch.load(args_cli.init_checkpoint, weights_only=False, map_location="cpu")["model_state_dict"]
         old_obs = src["decoder.4.weight"].shape[0]
-        for line in load_expanded(runner.alg.policy, src, old_obs, env.cfg.robot.dwaq_obs_history_length):
+        new_obs = runner.alg.policy.state_dict()["decoder.4.weight"].shape[0]
+        hist = env.cfg.robot.dwaq_obs_history_length
+        if hasattr(env, "obs_map_from"):  # the task says how its observation relates to older ones
+            lines = load_mapped(runner.alg.policy, src, env.obs_map_from(old_obs), hist)
+        else:
+            lines = load_expanded(runner.alg.policy, src, old_obs, hist)
+        for line in lines:
             print(f"[INFO] warm start expanded {line}")
 
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
