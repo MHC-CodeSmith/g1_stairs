@@ -1,0 +1,24 @@
+# Third-party policies and robot models used by the arena. Fetched by tools/fetch_third_party.sh into third_party/
+# (gitignored; nothing below is redistributed by this repository).
+repos:
+  unitree_rl_gym:            {url: https://github.com/unitreerobotics/unitree_rl_gym, commit: 276801e46c5d433564f24658bac64f254b7d2d4b, license: BSD-3-Clause, gives: "G1 12-DoF legs-only walking policy (deploy/pre_train/g1/motion.pt)"}
+  mujoco_playground:         {url: https://github.com/google-deepmind/mujoco_playground, commit: 4057c147714b6ac09b395377f1a1724bbeacc4d3, license: Apache-2.0, gives: "G1 29-DoF joystick walking policy (ONNX)"}
+  g1_walk_isaaclab_mujoco:   {url: https://github.com/yezzzzye/g1_walk_isaaclab_mujoco, commit: 19ce3c3561e3024055bf250ddd851b325175a7eb, license: MIT, gives: "G1 + Dex3 37-DoF walking policies (baseline, robust); Dex3 MJCF"}
+  holosoma:                  {url: https://github.com/amazon-far/holosoma, commit: bccd4d7451640a2800ddc77e469d911a84f91994, license: Apache-2.0, gives: "G1 29-DoF locomotion (PPO, FastSAC) and whole-body tracking (dance) ONNX"}
+  GR00T-WholeBodyControl:    {url: https://github.com/NVlabs/GR00T-WholeBodyControl, commit: b042411fae38ee4d1af9aac82a37a1f8d14d6dd0, license: "Apache-2.0 code; NVIDIA Open Model License weights", gives: "decoupled WBC Walk/Balance ONNX (legs+waist, G1+Dex3); SONIC code", lfs: ["decoupled_wbc/sim2mujoco/resources/robots/g1/**"]}
+  BFM-Zero:                  {url: https://github.com/LeCAR-Lab/BFM-Zero, commit: 318cf44a3262e5bdec5944f82f1a5f509b95d09b, license: "CC-BY-NC-4.0 (non-commercial)", gives: "promptable behavior foundation model code (humanoidverse)"}
+  humanoid-general-motion-tracking: {url: https://github.com/zixuan417/humanoid-general-motion-tracking, commit: 2a590de25a1eb08e47491977a738549c22f16e1f, license: Apache-2.0, gives: "GMT general motion tracker (pretrained.pt) + MuJoCo sim2sim"}
+  TWIST:                     {url: https://github.com/YanjieZe/TWIST, commit: 42d8c134739eee51f28d7cc0ff72a86728afb8dc, license: MIT, gives: "TWIST general motion tracker (jit) + G1 MJCF with hands"}
+  mujoco_menagerie:          {url: https://github.com/google-deepmind/mujoco_menagerie, commit: c96a32d28fb5da84da38c1da4d749e7a13212855, license: "BSD-3-Clause (unitree_g1)", gives: "unitree_g1 g1.xml and g1_with_hands.xml (Dex3-1)"}
+huggingface:
+  nvidia/GEAR-SONIC:
+    license: "NVIDIA Open Model License (weights)"
+    files: [config.json, observation_config.yaml, model_encoder.onnx, model_decoder.onnx, planner_sonic.onnx, LICENSE,
+            sample_data/robot_filtered/210531/walk_forward_amateur_001__A001.pkl, sample_data/smpl_filtered/walk_forward_amateur_001__A001.pkl,
+            sonic_release/config.yaml]
+  LeCAR-Lab/BFM-Zero:
+    license: "CC-BY-NC-4.0 (non-commercial)"
+    files: [README.md, data/lafan_29dof.pkl, model/checkpoint/config.json, model/checkpoint/init_kwargs.json, model/checkpoint/model/config.json,
+            model/checkpoint/model/init_kwargs.json, model/checkpoint/model/model.safetensors, model/checkpoint/train_status.json,
+            model/exported/FBcprAuxModel.onnx, model/goal_inference/goal_reaching.pkl, model/reward_inference/reward_locomotion.pkl,
+            model/tracking_inference/zs_walking.pkl]

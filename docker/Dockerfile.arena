@@ -1,0 +1,12 @@
+# MuJoCo arena: runs pretrained G1 policies from several repos on one robot model (CPU; EGL for video).
+FROM python:3.11-slim
+ENV DEBIAN_FRONTEND=noninteractive PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1 MUJOCO_GL=egl
+RUN apt-get update && apt-get install -y --no-install-recommends libegl1 libgl1 libglvnd0 libgles2 libosmesa6 git \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /usr/share/glvnd/egl_vendor.d \
+    && printf '{"file_format_version":"1.0.0","ICD":{"library_path":"libEGL_nvidia.so.0"}}\n' > /usr/share/glvnd/egl_vendor.d/10_nvidia.json
+RUN pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu && \
+    pip install mujoco==3.6.0 onnxruntime==1.20.1 onnx==1.17.0 "numpy<2.3" scipy pyyaml joblib imageio==2.37.0 imageio-ffmpeg==0.6.0 \
+                safetensors tqdm termcolor loguru tyro pydantic importlib_metadata defusedxml pyzmq
+WORKDIR /workspace/g1_stairs
+ENTRYPOINT ["python"]

@@ -4,3 +4,4 @@ __pycache__/
 logs/
 reference/
 skills/imported/agile/*_state_dict.pt
+third_party/
