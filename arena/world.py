@@ -271,9 +271,11 @@ class Arena:
                 tau = np.clip(tau, -self.tau_limit, self.tau_limit)
                 ok = self.act_of_joint >= 0
                 d.ctrl[self.act_of_joint[ok]] = tau[ok]
-            if self.push is not None:
-                t0, dur, force = self.push
-                d.xfrc_applied[self.pelvis, :3] = force if t0 <= self.t < t0 + dur else 0.0
+            if self.push is not None:        # one (t0, duration, force xyz) or a list of them
+                d.xfrc_applied[self.pelvis, :3] = 0.0
+                for t0, dur, force in (self.push if isinstance(self.push, list) else [self.push]):
+                    if t0 <= self.t < t0 + dur:
+                        d.xfrc_applied[self.pelvis, :3] = force
             mujoco.mj_step(self.model, d)
             self.t += self.model.opt.timestep
 

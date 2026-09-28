@@ -17,7 +17,7 @@ observation_config.yaml:
 
 Velocity commands are mapped the way the gamepad handler does: facing angle integrates the yaw rate, the movement
 direction is the command direction rotated by the facing angle, the speed picks slow walk / walk / run. A height
-command below 0.70 m selects the squat mode with that height.
+command below 0.75 m selects the squat mode with that height.
 """
 from __future__ import annotations
 
@@ -170,7 +170,7 @@ class Sonic(ArenaPolicy):
     def __init__(self, clip=None, seed=1234, style: str | None = None):
         import onnxruntime as ort
         opt = ort.SessionOptions()
-        opt.intra_op_num_threads = 2
+        opt.intra_op_num_threads = 1
         mk = lambda f: ort.InferenceSession(os.path.join(HF, f), opt, providers=["CPUExecutionProvider"])  # noqa: E731
         self.enc, self.dec = mk("model_encoder.onnx"), mk("model_decoder.onnx")
         self.clip = clip
@@ -246,7 +246,7 @@ class Sonic(ArenaPolicy):
         """Gamepad-style mapping of a body-frame velocity command to planner inputs (planner frame)."""
         v = np.hypot(cmd.vx, cmd.vy)
         face = np.array([np.cos(self.facing), np.sin(self.facing), 0.0])
-        if cmd.height is not None and cmd.height < 0.70:
+        if cmd.height is not None and cmd.height < 0.75:
             return MODES["squat"], 0.0, float(cmd.height), np.zeros(3), face
         if v < 0.05:
             return MODES["idle"], -1.0, -1.0, np.zeros(3), face
