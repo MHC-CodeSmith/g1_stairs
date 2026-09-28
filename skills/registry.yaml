@@ -7,9 +7,24 @@ dwaq_upstream:
   controls: whole body (29)
   command: [vx, vy, yaw_rate]
   good_at: blind stair climbing (0-23 cm), rough terrain; arms at default pose
+dwaq_strut:
+  kind: dwaq
+  path: checkpoints/g1_dwaq_strut.pt
+  source: this repo, g1_dwaq_strut fine-tune (stopped at iteration 500)
+  controls: whole body (29)
+  command: [vx, vy, yaw_rate]
+  good_at: blind stair climbing with a partly learned keyframed Spider-Man 3 strut on the arms
+dwaq_groove:
+  kind: dwaq
+  path: checkpoints/g1_dwaq_groove.pt
+  dance_period: 3.2
+  source: this repo, g1_dwaq_groove fine-tune
+  controls: whole body (29)
+  command: [vx, vy, yaw_rate]
+  good_at: blind stair climbing with a learned 8-beat arm routine (after Unitree's G1 dance clip)
 dwaq_bully:
   kind: dwaq
-  path: logs/g1_dwaq_bully/2026-09-27_03-06-52_bully/model_999.pt
+  path: checkpoints/g1_dwaq_bully.pt
   dance_period: 6.7
   source: this repo, g1_dwaq_bully fine-tune
   controls: legs + waist pitch (arms/waist yaw+roll overridden by the bully clip)
@@ -24,15 +39,15 @@ agile_velocity_height:
   good_at: flat/slightly rough walking, squatting to 0.4 m pelvis height, random upper body while standing
 bully_clip:
   kind: clip
-  path: reference/bully_g1.npz
+  path: reference/bully_g1.npz   # joint angles only; the source GIF is not in the repo
   source: tools/extract_pose.py + tools/retarget_g1.py on the Spider-Man 3 GIF
   controls: arms + waist yaw/roll (16)
   good_at: Bully Maguire dance, 6.7 s loop
 g1_body_student:
   kind: dwaq
-  path: logs/g1_body/2026-09-28_04-39-19_body/model_1499.pt
+  path: checkpoints/g1_body.pt
   extras: [height_cmd]
   source: this repo, g1_body distillation (teachers dwaq_bully + agile_velocity_height)
   controls: legs + waist pitch (upper body free for any upper-body skill)
   command: [vx, vy, yaw_rate, pelvis_height]
-  good_at: one controller for walking, stairs and crouching under arbitrary upper-body motion
+  good_at: walking and stairs under arbitrary upper-body motion; does NOT follow the height command yet

@@ -2,5 +2,6 @@ output/
 __pycache__/
 *.pyc
 logs/
-reference/
+reference/*
+!reference/bully_g1.npz
 skills/imported/agile/*_state_dict.pt

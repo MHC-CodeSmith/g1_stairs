@@ -197,9 +197,12 @@ class G1BodyEnv(G1DwaqEnv):
         self._update_context(torch.arange(self.num_envs, device=dev))
 
     def obs_map_from(self, old_obs: int):
-        """Warm start: the first 100 obs are the upstream DWAQ layout; a source's extras (e.g. the bully dance clock)
-        are dropped and the height command starts with zero weights."""
+        """Warm start: the first 100 obs are the upstream DWAQ layout. From a g1_body checkpoint (101 obs) keep
+        everything; from another task, drop its extras (e.g. the bully dance clock) and start the height command
+        with zero weights."""
         assert old_obs >= 100
+        if old_obs == 101:
+            return list(range(101))
         return list(range(100)) + [None]
 
     # --- helpers -----------------------------------------------------------------------------------------------

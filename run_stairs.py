@@ -49,11 +49,11 @@ def load_upstream():
 GROOVE_PERIOD = 3.2  # g1_strut/groove.py: 8 beats, one per footstep (0.4 s)
 
 
-def _with_dance_clock(get_current_obs):
-    """g1_dwaq_groove policies (102 obs) also observe sin/cos of the 3.2 s phrase phase (g1_strut/tasks.G1DanceEnv),
-    on the same clock as the gait phase."""
+def _with_dance_clock(get_current_obs, period=GROOVE_PERIOD):
+    """Dance-clock policies (102 obs) also observe sin/cos of the phrase phase (g1_strut/tasks.G1DanceEnv), on the
+    same clock as the gait phase. The period comes from the checkpoint's metadata (tools/export_checkpoint.py)."""
     def wrapped(self):
-        ph = 2 * np.pi * (self.gait_phase_time % GROOVE_PERIOD) / GROOVE_PERIOD
+        ph = 2 * np.pi * (self.gait_phase_time % period) / period
         return np.concatenate([get_current_obs(self), [np.sin(ph), np.cos(ph)]]).astype(np.float32)
     return wrapped
 
@@ -292,10 +292,18 @@ def main():
     cfg = up.G1DwaqSim2SimCfg()
     cfg.sim.sim_duration = args.duration
     # observation size from the checkpoint (decoder reconstructs the obs): 100 = stair/strut policy, 102 = groove
-    num_obs = torch.load(args.checkpoint, map_location="cpu", weights_only=False)["model_state_dict"]["decoder.4.weight"].shape[0]
+    ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    num_obs = ckpt["model_state_dict"]["decoder.4.weight"].shape[0]
+    meta = ckpt.get("meta") or {}
+    if meta.get("extras", ["dance_clock"] if num_obs == 102 else []) not in ([], ["dance_clock"]):
+        sys.exit(f"{args.checkpoint}: observation extras {meta['extras']} are not supported by the MuJoCo runner")
+    if meta.get("task") == "g1_dwaq_bully":
+        print("[warn] g1_dwaq_bully was trained with the bully clip overriding its arm outputs; "
+              "the MuJoCo runner does not play the clip, so the arms will not dance")
     if num_obs != cfg.sim.num_obs_per_step:
         cfg.sim.num_obs_per_step = num_obs
-        up.G1DwaqMujocoRunner.get_current_obs = _with_dance_clock(up.G1DwaqMujocoRunner.get_current_obs)
+        up.G1DwaqMujocoRunner.get_current_obs = _with_dance_clock(up.G1DwaqMujocoRunner.get_current_obs,
+                                                                  meta.get("dance_period") or GROOVE_PERIOD)
     r = up.G1DwaqMujocoRunner(cfg=cfg, checkpoint_path=args.checkpoint, model_path=args.scene)
     stairs = StairProfile(r.model)
     if args.mode == "record":
