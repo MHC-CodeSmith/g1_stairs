@@ -279,3 +279,73 @@ class DwaqPolicy(Skill):
 
     def encode(self, targets29):
         return (targets29 - self.default29) / 0.25
+
+
+G1_JOINTS_MJ = [  # MuJoCo / Unitree SDK order
+    "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint", "left_ankle_pitch_joint",
+    "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint", "right_knee_joint",
+    "right_ankle_pitch_joint", "right_ankle_roll_joint", "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
+    "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint",
+    "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint",
+    "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint",
+]
+
+
+class Gr00tWbc(Skill):
+    """NVIDIA GR00T-WholeBodyControl decoupled WBC (Walk + Balance), legs + waist (15 joints, MuJoCo order).
+
+    Command (N, 4 or 7): [vx, vy, yaw_rate, pelvis height (0.74 nominal, trained down to ~0.5), torso roll, pitch,
+    yaw]. Obs per frame (86): command * [2, 2, 0.5], height, torso rpy, ang vel * 0.5, gravity, all 29 joints
+    - default (MuJoCo order, zero default above the waist), joint vel * 0.05 (29), last raw action 15; 6 frames,
+    oldest first, history zero-initialised (as its run_mujoco_gear_wbc.py). Balance policy while |command| <= 0.05,
+    Walk otherwise; action * 0.25 + default. Networks: tools/convert_gr00t_wbc.py (TorchScript of the ONNX files).
+    """
+
+    name = "gr00t_wbc"
+    joints = G1_JOINTS_MJ[:15]
+    NOMINAL_HEIGHT = 0.74
+
+    def __init__(self, walk_path: str, balance_path: str, device="cpu"):
+        self.device = torch.device(device)
+        self.walk = torch.jit.load(walk_path, map_location=self.device).eval()
+        self.balance = torch.jit.load(balance_path, map_location=self.device).eval()
+        self.kp = torch.tensor([150, 150, 150, 200, 40, 40] * 2 + [250, 250, 250.0], device=self.device)
+        self.kd = torch.tensor([2, 2, 2, 4, 2, 2] * 2 + [5, 5, 5.0], device=self.device)
+        self.default15 = torch.tensor([-0.1, 0, 0, 0.3, -0.2, 0] * 2 + [0, 0, 0.0], device=self.device)
+        self.default29 = torch.cat([self.default15, torch.zeros(14, device=self.device)])
+        self.cmd_scale = torch.tensor([2.0, 2.0, 0.5], device=self.device)
+        self.buf = None
+        self.last_action = None
+
+    def reset(self, env_ids=None):
+        if env_ids is None:
+            self.buf, self.last_action = None, None
+        elif self.buf is not None:
+            self.buf[env_ids] = 0.0
+            self.last_action[env_ids] = 0.0
+
+    def frame(self, state: RobotState, command: torch.Tensor, last_action: torch.Tensor | None = None):
+        n = state.q.shape[0]
+        idx = state.index(G1_JOINTS_MJ)
+        if self.buf is None or self.buf.shape[0] != n:
+            self.buf = torch.zeros(n, 6, 86, device=state.q.device)
+            self.last_action = torch.zeros(n, 15, device=state.q.device)
+        la = self.last_action if last_action is None else last_action
+        h = command[:, 3:4] if command.shape[1] > 3 else torch.full((n, 1), self.NOMINAL_HEIGHT, device=state.q.device)
+        rpy = command[:, 4:7] if command.shape[1] >= 7 else torch.zeros(n, 3, device=state.q.device)
+        return torch.cat([command[:, :3] * self.cmd_scale, h, rpy, state.ang_vel_b * 0.5, state.gravity_b,
+                          state.q[:, idx] - self.default29, state.qd[:, idx] * 0.05, la], dim=1)
+
+    @torch.no_grad()
+    def act(self, state, command, last_action=None):
+        f = self.frame(state, command, last_action)
+        self.buf = torch.cat([self.buf[:, 1:], f.unsqueeze(1)], dim=1)
+        x = self.buf.flatten(1)
+        stand = torch.linalg.vector_norm(command[:, :3], dim=1, keepdim=True) <= 0.05
+        raw = torch.where(stand, self.balance(x), self.walk(x))
+        self.last_action = raw
+        return raw * 0.25 + self.default15
+
+    def encode(self, targets15):
+        return (targets15 - self.default15) / 0.25

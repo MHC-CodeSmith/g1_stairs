@@ -14,6 +14,13 @@ agile_velocity_height:
   controls: legs (12)
   command: [vx, vy, yaw_rate, pelvis_height]
   good_at: flat/slightly rough walking, squatting to 0.4 m pelvis height, random upper body while standing
+gr00t_wbc:
+  kind: gr00t_wbc
+  path: third_party/converted/gr00t_wbc
+  source: https://github.com/NVlabs/GR00T-WholeBodyControl @ b042411 (code Apache-2.0, weights NVIDIA Open Model License); converted by tools/convert_gr00t_wbc.py
+  controls: legs + waist (15)
+  command: [vx, vy, yaw_rate, pelvis_height, torso_roll, torso_pitch, torso_yaw]
+  good_at: walking on flat ground with the arms doing anything (trained with Dex3 hands); crouching to 0.50 m pelvis height; torso orientation
 g1_body_student:
   kind: dwaq
   path: checkpoints/g1_body.pt

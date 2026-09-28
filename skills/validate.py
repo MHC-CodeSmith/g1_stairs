@@ -5,6 +5,8 @@
   dwaq_equivalence  DwaqPolicy adapter vs the env + rsl_rl policy it came from (must match to ~1e-5)
   agile_native      AGILE velocity-height on flat ground with its own PD gains: walk, turn, crouch, rise
   agile_remap       same, executed with our (TienKung) gains through gain_equivalent_target at 50 Hz
+  gr00t_native      GR00T WBC (legs + waist) with its own PD gains: same schedule
+  gr00t_remap       same, with our gains through gain_equivalent_target (how g1_body uses it as the crouch teacher)
 """
 import argparse
 import os
@@ -87,10 +89,11 @@ def check_dwaq_equivalence():
           + ", ".join(f"{n} {v:.1e}" for n, v in seg_worst.items()))
 
 
-def run_agile(mode):
+def run_agile(mode, name="agile"):
     env, _, _ = make_env("g1_dwaq", "flat", args.num_envs)
     sr = SkillRunner(env)
-    agile = AgileVelocityHeight(registry.path("agile_velocity_height"), device=env.device)
+    agile = (AgileVelocityHeight(registry.path("agile_velocity_height"), device=env.device) if name == "agile"
+             else registry.load("gr00t_wbc", device=env.device))
     legs = sr.ids(agile.joints)
     upper_names = [n for n in sr.names if n not in agile.joints]
     upper = sr.ids(upper_names)
@@ -135,13 +138,14 @@ def run_agile(mode):
         if 13 <= t < 17:
             h_err += float((st.base_height - cmd[:, 3]).abs().mean()); n_h += 1
     falls = int((~torch.isnan(fell_at)).sum())
-    print(f"[agile_{mode}, upper={args.upper}] envs {env.num_envs}: falls {falls} (at {sorted(round(x, 1) for x in fell_at[~torch.isnan(fell_at)].tolist())}), "
+    print(f"[{name}_{mode}, upper={args.upper}] envs {env.num_envs}: falls {falls} (at {sorted(round(x, 1) for x in fell_at[~torch.isnan(fell_at)].tolist())}), "
           f"mean |vx err| walking {vx_err / max(n_walk, 1):.3f} m/s, mean |height err| crouching {h_err / max(n_h, 1):.3f} m, "
           f"final pelvis height {float(sr.state().base_height.mean()):.2f} m")
 
 
 checks = {"dwaq_equivalence": check_dwaq_equivalence, "agile_native": lambda: run_agile("native"),
-          "agile_remap": lambda: run_agile("remap")}
+          "agile_remap": lambda: run_agile("remap"), "gr00t_native": lambda: run_agile("native", "gr00t"),
+          "gr00t_remap": lambda: run_agile("remap", "gr00t")}
 checks[args.check]()  # one per process: Isaac Lab builds one scene per app
 sys.stdout.flush()
 os._exit(0)

@@ -4,11 +4,15 @@ Student: DWAQ actor-critic (blind, 5-frame history) driving legs + waist pitch. 
 yaw/roll) is driven by a motion library that stands in for an upper-body skill (default pose, fixed holds, random
 reaches; later teleop or a manipulation policy). Command: [vx, vy, yaw rate] + pelvis height.
 
-Teachers, chosen per env by context (only where each was validated, see skills/validate.py):
-  - standing on a flat tile (height command 0.62-0.72 m): NVIDIA WBC-AGILE velocity-height, legs only, its targets
-    converted to our PD gains (gain_equivalent_target)
-  - everything else (walking, stairs, rough): the G1DWAQ_Lab stair policy, legs + waist pitch
-Training: PPO on the task reward + annealed distillation toward the active teacher (g1_rl/distill.py).
+Teachers, chosen per env from what the (blind) student can observe, and only where each was validated
+(docs/SCORECARD.md):
+  - height command below nominal (standing on a flat tile, command forced to zero): NVIDIA GR00T-WholeBodyControl
+    (Balance), legs + waist pitch, its targets converted to our PD gains (gain_equivalent_target). It crouches to
+    0.50 m in the arena; AGILE, the previous crouch teacher, stops at 0.62 m. Its imitation weight is not annealed.
+  - everything else (walking, stairs, rough, at nominal height): the G1DWAQ_Lab stair policy, legs + waist pitch,
+    with the annealed imitation weight.
+A crouch context is drawn for half of the envs on flat tiles (~15% of all envs), so the crouch teacher gets enough
+samples. Training: PPO on the task reward + distillation toward the active teacher (g1_rl/distill.py).
 """
 from __future__ import annotations
 
@@ -28,9 +32,10 @@ from legged_lab.utils.task_registry import task_registry
 from skills import registry
 from skills.adapters import RobotState, gain_equivalent_target
 
-AGILE_HEIGHT_RANGE = (0.62, 0.72)   # where the imported policy tracks height in our env
+CROUCH_RANGE = (0.50, 0.70)         # GR00T WBC tracks 0.50 m with 1.2 cm error (arena crouch test)
+CROUCH_PROB = 0.5                   # share of flat-tile envs given a crouch context
 NOMINAL_HEIGHT = 0.72
-FLAT_SHARE, STAIRS_SHARE = 0.25, 0.45
+FLAT_SHARE, STAIRS_SHARE = 0.30, 0.40
 
 UPPER_JOINTS = [  # driven by the motion library, not the student
     "waist_yaw_joint", "waist_roll_joint",
@@ -56,9 +61,9 @@ HOLDS = [  # (name, {joint: angle}) arm poses for carrying / reaching / idle
 
 
 def height_tracking(env, std: float) -> torch.Tensor:
-    """exp(-(pelvis height - command)^2 / std^2), only for envs with an active height command (AGILE context)."""
+    """exp(-(pelvis height - command)^2 / std^2), only for envs with an active height command (crouch context)."""
     err = env.base_height() - env.height_cmd
-    return torch.exp(-err.pow(2) / std**2) * env.agile_ctx.float()
+    return torch.exp(-err.pow(2) / std**2) * env.crouch_active.float()
 
 
 @configclass
@@ -172,7 +177,8 @@ class G1BodyEnv(G1DwaqEnv):
         dev = self.device
         self.height_cmd = torch.full((self.num_envs,), NOMINAL_HEIGHT, device=dev)
         self.height_goal = self.height_cmd.clone()
-        self.agile_ctx = torch.zeros(self.num_envs, dtype=torch.bool, device=dev)
+        self.crouch_ctx = torch.zeros(self.num_envs, dtype=torch.bool, device=dev)     # drawn: crouch now
+        self.crouch_active = torch.zeros(self.num_envs, dtype=torch.bool, device=dev)  # drawn, or still coming back up
         self.upper_ids = torch.tensor(self.robot.find_joints(UPPER_JOINTS, preserve_order=True)[0], device=dev)
         self.motion = MotionLibrary(self)
         names = list(self.robot.joint_names)
@@ -186,19 +192,19 @@ class G1BodyEnv(G1DwaqEnv):
         self.flat_cols = torch.tensor([k == "flat" for k in col_kind], device=dev)
         # teachers
         self.t_dwaq = registry.load("dwaq_upstream", device=dev)
-        self.t_agile = registry.load("agile_velocity_height", device=dev)
-        self.agile_ids = torch.tensor([names.index(j) for j in self.t_agile.joints], device=dev)
+        self.t_crouch = registry.load("gr00t_wbc", device=dev)
+        self.crouch_ids = torch.tensor([names.index(j) for j in self.t_crouch.joints], device=dev)
         self.lower_ids = torch.tensor([names.index(j) for j in names if j not in UPPER_JOINTS], device=dev)  # legs + waist pitch
         self.kp = self.robot.data.joint_stiffness[0].clone()
         self.kd = self.robot.data.joint_damping[0].clone()
         self.teacher_actions = torch.zeros(self.num_envs, self.num_actions, device=dev)
-        self.teacher_weights = torch.zeros(self.num_envs, self.num_actions, device=dev)
+        self.teacher_weights = torch.zeros(self.num_envs, 2 * self.num_actions, device=dev)   # [annealed | fixed]
         self.w_dwaq = torch.zeros(self.num_actions, device=dev)
         self.w_dwaq[self.lower_ids] = 1.0
-        self.w_agile = torch.zeros(self.num_actions, device=dev)
-        self.w_agile[self.agile_ids] = 1.0
-        self.w_agile[names.index("waist_pitch_joint")] = 0.3   # AGILE holds waist pitch at 0 (= our default)
-        self._agile_last = torch.zeros(self.num_envs, 12, device=dev)
+        self.w_crouch = torch.zeros(self.num_actions, device=dev)
+        self.w_crouch[[names.index(j) for j in self.t_crouch.joints if j not in UPPER_JOINTS]] = 1.0  # legs + waist pitch
+        self.w_crouch[names.index("waist_pitch_joint")] = 0.5
+        self._crouch_last = torch.zeros(self.num_envs, 15, device=dev)
         self._update_context(torch.arange(self.num_envs, device=dev))
 
     def obs_map_from(self, old_obs: int):
@@ -224,13 +230,22 @@ class G1BodyEnv(G1DwaqEnv):
                           self.base_height(), self.episode_length_buf.float() * self.step_dt)
 
     def _update_context(self, ids):
-        """AGILE context: standing command on a flat tile. Height goal sampled in its validated range."""
+        """Crouch context: half of the envs on flat tiles, standing, height goal in the crouch teacher's range."""
         on_flat = self.flat_cols[self.scene.terrain.terrain_types[ids]]
-        standing = self.command_generator.is_standing_env[ids]
-        ctx = on_flat & standing
-        self.agile_ctx[ids] = ctx
-        goal = AGILE_HEIGHT_RANGE[0] + (AGILE_HEIGHT_RANGE[1] - AGILE_HEIGHT_RANGE[0]) * torch.rand(len(ids), device=self.device)
+        ctx = on_flat & (torch.rand(len(ids), device=self.device) < CROUCH_PROB)
+        self.crouch_ctx[ids] = ctx
+        goal = CROUCH_RANGE[0] + (CROUCH_RANGE[1] - CROUCH_RANGE[0]) * torch.rand(len(ids), device=self.device)
         self.height_goal[ids] = torch.where(ctx, goal, torch.full_like(goal, NOMINAL_HEIGHT))
+        self._refresh_crouch()
+
+    def _refresh_crouch(self):
+        """Active while drawn or while the height command is still returning to nominal; those envs stand still
+        (the velocity command generator zeroes standing envs), so the height command alone tells the student which
+        teacher it is imitating."""
+        self.crouch_active = self.crouch_ctx | (self.height_cmd < NOMINAL_HEIGHT - 0.005)
+        cg = self.command_generator
+        cg.is_standing_env[self.crouch_active] = True
+        cg.vel_command_b[self.crouch_active] = 0.0
 
     # --- observations: upstream 100 + (height command - nominal) -----------------------------------------------
     def compute_current_observations(self):
@@ -253,8 +268,8 @@ class G1BodyEnv(G1DwaqEnv):
             return
         self.motion.resample(env_ids)
         self.t_dwaq.reset(env_ids)
-        self.t_agile.reset(env_ids)
-        self._agile_last[env_ids] = 0.0
+        self.t_crouch.reset(env_ids)
+        self._crouch_last[env_ids] = 0.0
         self.height_cmd[env_ids] = NOMINAL_HEIGHT
         self._update_context(env_ids)
 
@@ -266,17 +281,17 @@ class G1BodyEnv(G1DwaqEnv):
         tgt_d = self.t_dwaq.act(st, cmd, last_action=last)                              # absolute, our gains
         raw_d = (tgt_d - self.robot.data.default_joint_pos) / self.action_scale
         cmd4 = torch.cat([cmd, self.height_cmd.unsqueeze(1)], dim=1)
-        tgt_a = self.t_agile.act(st, cmd4, last_action=self._agile_last)                # absolute, AGILE gains
-        q, qd = st.q[:, self.agile_ids], st.qd[:, self.agile_ids]
-        tgt_a = gain_equivalent_target(tgt_a, q, qd, self.t_agile.kp, self.t_agile.kd,
-                                       self.kp[self.agile_ids], self.kd[self.agile_ids])
-        raw_a = raw_d.clone()
-        raw_a[:, self.agile_ids] = (tgt_a - self.robot.data.default_joint_pos[:, self.agile_ids]) / self.action_scale
-        wp = self.joint_names.index("waist_pitch_joint")
-        raw_a[:, wp] = 0.0
-        ctx = self.agile_ctx.unsqueeze(1)
-        self.teacher_actions = torch.where(ctx, raw_a, raw_d)
-        self.teacher_weights = torch.where(ctx, self.w_agile, self.w_dwaq)
+        tgt_c = self.t_crouch.act(st, cmd4, last_action=self._crouch_last)              # absolute, GR00T gains
+        q, qd = st.q[:, self.crouch_ids], st.qd[:, self.crouch_ids]
+        tgt_c = gain_equivalent_target(tgt_c, q, qd, self.t_crouch.kp, self.t_crouch.kd,
+                                       self.kp[self.crouch_ids], self.kd[self.crouch_ids])
+        raw_c = raw_d.clone()
+        raw_c[:, self.crouch_ids] = (tgt_c - self.robot.data.default_joint_pos[:, self.crouch_ids]) / self.action_scale
+        ctx = self.crouch_active.unsqueeze(1)
+        self.teacher_actions = torch.where(ctx, raw_c, raw_d)
+        zero = torch.zeros_like(self.w_dwaq)
+        self.teacher_weights = torch.cat([torch.where(ctx, zero, self.w_dwaq),         # annealed: DWAQ
+                                          torch.where(ctx, self.w_crouch, zero)], 1)    # fixed: crouch teacher
 
     def get_observations(self):
         out = super().get_observations()
@@ -293,18 +308,24 @@ class G1BodyEnv(G1DwaqEnv):
         resample = (torch.rand(self.num_envs, device=self.device) < self.step_dt / 5.0).nonzero().flatten()
         self._update_context(resample)
         self.height_cmd += (self.height_goal - self.height_cmd).clamp(-0.1 * self.step_dt, 0.1 * self.step_dt)
-        # AGILE "last action": what was executed on the legs, expressed in its own action space and gains
+        self._refresh_crouch()
+        # crouch teacher's "last action": what was executed on its 15 joints, in its own action space and gains
         d = self.robot.data
-        exe = d.default_joint_pos[:, self.agile_ids] + self.action_scale * torch.clamp(actions[:, self.agile_ids], -100, 100)
-        exe_a = gain_equivalent_target(exe, d.joint_pos[:, self.agile_ids], d.joint_vel[:, self.agile_ids],
-                                       self.kp[self.agile_ids], self.kd[self.agile_ids], self.t_agile.kp, self.t_agile.kd)
-        self._agile_last = self.t_agile.encode(exe_a)
+        exe = d.default_joint_pos[:, self.crouch_ids] + self.action_scale * torch.clamp(actions[:, self.crouch_ids], -100, 100)
+        exe_c = gain_equivalent_target(exe, d.joint_pos[:, self.crouch_ids], d.joint_vel[:, self.crouch_ids],
+                                       self.kp[self.crouch_ids], self.kd[self.crouch_ids], self.t_crouch.kp, self.t_crouch.kd)
+        self._crouch_last = self.t_crouch.encode(exe_c)
         out = super().step(actions)
+        self._refresh_crouch()
         self._label()
         log = self.extras.setdefault("log", {})
-        log["Body/agile_ctx_frac"] = self.agile_ctx.float().mean()
-        if self.agile_ctx.any():
-            log["Body/height_err_agile_ctx"] = (self.base_height() - self.height_cmd)[self.agile_ctx].abs().mean()
+        log["Body/crouch_frac"] = self.crouch_active.float().mean()
+        if self.crouch_active.any():
+            err = (self.base_height() - self.height_cmd)[self.crouch_active]
+            log["Body/height_err_crouch"] = err.abs().mean()
+            low = self.height_cmd[self.crouch_active] < 0.58
+            if low.any():
+                log["Body/height_err_below_0.58"] = err[low].abs().mean()
         return out
 
 

@@ -1,10 +1,12 @@
 """PPO + multi-teacher action distillation for the DWAQ policy ("kickstarting", as in HANDOFF, arXiv 2606.06493).
 
 The env provides, for the observation the student is about to act on, `teacher_actions` (N, A) in the student's raw
-action space and `teacher_weights` (N, A) >= 0 (which teacher is valid for that env and which joints it may
-supervise). The update adds  coef(it) * sum_j w_j (mu_j - a*_j)^2 / sum_j w_j  to the DWAQ PPO loss: labels are
-collected on the student's own state distribution (DAgger), the task reward stays in charge, and the coefficient
-anneals so the student can outgrow its teachers.
+action space and `teacher_weights` (N, 2A) >= 0: which teacher is valid for that env and which joints it may
+supervise, split into an annealed part [:A] and a fixed part [A:]. The update adds
+  coef(it) * L(w[:A]) + fixed_coef * L(w[A:]),   L(w) = sum_j w_j (mu_j - a*_j)^2 / sum_j w_j
+to the DWAQ PPO loss. Labels are collected on the student's own state distribution (DAgger) and the task reward stays
+in charge. The annealed part lets the student outgrow a teacher it already matches (the warm-start policy); the fixed
+part keeps a new skill supervised for the whole run.
 """
 from __future__ import annotations
 
@@ -26,7 +28,7 @@ class DistillRolloutStorage(RolloutStorageDWAQ):
         super().__init__(num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, obs_hist_shape,
                          action_shape, device)
         self.teacher_actions = torch.zeros(num_transitions_per_env, num_envs, *action_shape, device=device)
-        self.teacher_weights = torch.zeros(num_transitions_per_env, num_envs, *action_shape, device=device)
+        self.teacher_weights = torch.zeros(num_transitions_per_env, num_envs, 2 * action_shape[0], device=device)
 
     def add_transitions(self, transition):
         self.teacher_actions[self.step].copy_(transition.teacher_actions)
@@ -56,6 +58,7 @@ class DistillDWAQPPO(DWAQPPO):
     total_iterations = 1000
     coef_start, coef_end = 1.0, 0.05
     hold_frac, anneal_frac = 0.3, 0.5   # full weight for the first 30% of updates, linear to coef_end over the next 50%
+    fixed_coef = 1.0
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -84,7 +87,7 @@ class DistillDWAQPPO(DWAQPPO):
     def update(self, beta: float = 1.0) -> dict[str, float]:
         """DWAQPPO.update (surrogate + value + entropy + beta-VAE) plus the weighted distillation term."""
         coef = self.distill_coef()
-        mean_value_loss = mean_surrogate_loss = mean_autoenc_loss = mean_distill = 0.0
+        mean_value_loss = mean_surrogate_loss = mean_autoenc_loss = mean_distill = mean_fix = 0.0
         generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
         for (obs_batch, critic_obs_batch, prev_critic_obs_batch, obs_hist_batch, actions_batch, target_values_batch,
              advantages_batch, returns_batch, old_actions_log_prob_batch, old_mu_batch, old_sigma_batch,
@@ -125,10 +128,15 @@ class DistillDWAQPPO(DWAQPPO):
             else:
                 value_loss = (returns_batch - value_batch).pow(2).mean()
 
-            distill_loss = (weight_batch * (mu_batch - teacher_batch).pow(2)).sum() / weight_batch.sum().clamp(min=1.0)
+            A = mu_batch.shape[1]
+            err2 = (mu_batch - teacher_batch).pow(2)
+            w_ann, w_fix = weight_batch[:, :A], weight_batch[:, A:]
+            distill_ann = (w_ann * err2).sum() / w_ann.sum().clamp(min=1.0)
+            distill_fix = (w_fix * err2).sum() / w_fix.sum().clamp(min=1.0)
+            distill_loss = distill_ann + distill_fix
 
             loss = (surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
-                    + autoenc_loss + coef * distill_loss)
+                    + autoenc_loss + coef * distill_ann + self.fixed_coef * distill_fix)
             self.optimizer.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
@@ -138,10 +146,12 @@ class DistillDWAQPPO(DWAQPPO):
             mean_surrogate_loss += surrogate_loss.item()
             mean_autoenc_loss += autoenc_loss.item()
             mean_distill += distill_loss.item()
+            mean_fix += distill_fix.item()
 
         n = self.num_learning_epochs * self.num_mini_batches
         self.storage.clear()
         self.num_updates += 1
         self.last_losses = {"distill": mean_distill / n, "distill_coef": coef}
         return {"value_function": mean_value_loss / n, "surrogate": mean_surrogate_loss / n,
-                "autoencoder": mean_autoenc_loss / n, "distill": mean_distill / n, "distill_coef": coef}
+                "autoencoder": mean_autoenc_loss / n, "distill": mean_distill / n, "distill_fixed": mean_fix / n,
+                "distill_coef": coef}

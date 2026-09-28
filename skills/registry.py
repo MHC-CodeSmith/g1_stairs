@@ -22,4 +22,7 @@ def load(name, device="cpu"):
         return adapters.DwaqPolicy(path(name), device=device, name=name, extras=spec.get("extras"))
     if kind == "agile_velocity_height":
         return adapters.AgileVelocityHeight(path(name), device=device)
+    if kind == "gr00t_wbc":
+        d = path(name)
+        return adapters.Gr00tWbc(os.path.join(d, "walk.pt"), os.path.join(d, "balance.pt"), device=device)
     raise ValueError(f"unknown skill kind {kind}")
