@@ -1,11 +1,12 @@
-"""Fine-tune the G1DWAQ stair policy with the strut dance reward (Isaac Sim / Isaac Lab, headless).
+"""Train a G1 task in Isaac Sim / Isaac Lab (headless), starting from a pretrained policy.
 
-  python g1_strut/train.py --headless --num_envs 4096 --max_iterations 3000 \
+  python g1_rl/train.py --headless --task g1_body --num_envs 4096 --max_iterations 1500 \
       --init_checkpoint /workspace/TienKung-Lab/logs/g1_dwaq/2026-01-16_00-46-00/model_9999.pt
 
 Same flow as TienKung-Lab/legged_lab/scripts/train.py, plus --init_checkpoint: load policy weights (not the
 optimizer or iteration counter) from the pretrained stair policy, so fine-tuning starts from a stair climber.
-If the task has extra observations (g1_dwaq_groove's dance clock), the weights are expanded (warmstart.py).
+If the task's observation differs from the source's (g1_body adds a height command), the weights are mapped onto
+the new layout (warmstart.py).
 """
 import argparse
 import os
@@ -17,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import legged_lab.utils.cli_args as cli_args  # noqa: E402  isort: skip
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument("--task", type=str, default="g1_dwaq_strut")
+parser.add_argument("--task", type=str, default="g1_body")
 parser.add_argument("--num_envs", type=int, default=None)
 parser.add_argument("--seed", type=int, default=None)
 parser.add_argument("--init_checkpoint", type=str, default=None, help="policy weights to start from")
@@ -39,14 +40,13 @@ from legged_lab.envs import *  # noqa: E402,F401,F403  (registers upstream tasks
 from legged_lab.utils import task_registry  # noqa: E402
 from legged_lab.utils.cli_args import update_rsl_rl_cfg  # noqa: E402
 
-import g1_strut.tasks  # noqa: E402,F401  (registers g1_dwaq_strut/groove/bully)
-import g1_strut.body  # noqa: E402,F401  (registers g1_body)
+import g1_rl.body  # noqa: E402,F401  (registers g1_body)
 import rsl_rl.runners.dwaq_on_policy_runner as _runner_mod  # noqa: E402
-from g1_strut.distill import DistillDWAQPPO  # noqa: E402
+from g1_rl.distill import DistillDWAQPPO  # noqa: E402
 
 _runner_mod.DistillDWAQPPO = DistillDWAQPPO  # the runner resolves algorithm.class_name with eval() in its module
-from g1_strut import chown_to_host  # noqa: E402
-from g1_strut.warmstart import load_expanded, load_mapped  # noqa: E402
+from g1_rl import chown_to_host  # noqa: E402
+from g1_rl.warmstart import load_expanded, load_mapped  # noqa: E402
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True

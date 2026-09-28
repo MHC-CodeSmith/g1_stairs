@@ -1,6 +1,6 @@
 """Render an Isaac Lab rollout (.npz from rollout_isaac.py) with Isaac Sim 6.0's RTX renderer -> PNG frames.
 
-  /isaac-sim/python.sh g1_strut/render_isaac6.py --rollout output/isaac_strut.npz --frames output/frames_strut
+  /isaac-sim/python.sh g1_rl/render_isaac6.py --rollout output/rollout.npz --frames output/frames_rollout
 
 Kinematic replay: the same G1 USD the policy was trained with is referenced, every link is posed from the recorded
 world transforms (the USD's links are all direct children of its root prim), and physics never runs. The staircase

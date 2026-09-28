@@ -1,5 +1,5 @@
-# Isaac Sim 5.1 + Isaac Lab 2.3.2 + TienKung-Lab (G1DWAQ training code, its rsl_rl fork) for the strut fine-tune.
-# The repo itself (g1_strut/, logs/) is mounted at /workspace/g1_stairs at run time.
+# Isaac Sim 5.1 + Isaac Lab 2.3.2 + TienKung-Lab (G1DWAQ training code, its rsl_rl fork) for training on the G1.
+# The repo itself (g1_rl/, logs/) is mounted at /workspace/g1_stairs at run time.
 FROM nvcr.io/nvidia/isaac-sim:5.1.0
 
 USER root
@@ -30,4 +30,4 @@ RUN /isaac-sim/python.sh -m pip install --no-cache-dir -e /workspace/TienKung-La
 
 WORKDIR /workspace/g1_stairs
 ENTRYPOINT ["/isaac-sim/python.sh"]
-CMD ["g1_strut/train.py", "--headless"]
+CMD ["g1_rl/train.py", "--headless"]

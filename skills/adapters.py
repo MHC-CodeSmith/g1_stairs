@@ -173,11 +173,11 @@ class AgileVelocityHeight(Skill):
 
 
 class DwaqPolicy(Skill):
-    """G1DWAQ_Lab / TienKung-Lab DWAQ policy (ours: stairs, strut, groove, bully fine-tunes). 29 outputs.
+    """G1DWAQ_Lab / TienKung-Lab DWAQ policy (the upstream stair policy and fine-tunes of it). 29 outputs.
 
     Obs per frame: ang vel 3, gravity 3, command [vx, vy, yaw_rate] 3, joint pos - default 29, joint vel 29,
     last raw action 29, then sin(leg phase) 2, cos(leg phase) 2 (0.8 s gait clock), then optional extras in order:
-    "dance_clock" (sin/cos over `dance_period`, groove/bully tasks), "height_cmd" (command[:, 3] - 0.72, g1_body).
+    "height_cmd" (command[:, 3] - 0.72, g1_body).
     Actor input = [VAE code 19, current obs]; encoder input = 5 frames.
     """
 
@@ -193,19 +193,17 @@ class DwaqPolicy(Skill):
     _kd = {"hip_yaw": 5, "hip_roll": 5, "hip_pitch": 5, "knee": 5, "waist": 5, "ankle": 2,
            "shoulder_pitch": 2, "shoulder_roll": 2, "shoulder_yaw": 2, "elbow": 2, "wrist": 2}
 
-    EXTRA_DIMS = {"dance_clock": 2, "height_cmd": 1}
+    EXTRA_DIMS = {"height_cmd": 1}
     NOMINAL_HEIGHT = 0.72
 
-    def __init__(self, checkpoint: str, device="cpu", dance_period: float | None = None, name: str | None = None,
-                 extras: list[str] | None = None):
+    def __init__(self, checkpoint: str, device="cpu", name: str | None = None, extras: list[str] | None = None):
         import re
 
         self.device = torch.device(device)
         self.name = name or self.name
         sd = torch.load(checkpoint, map_location=self.device, weights_only=False)["model_state_dict"]
         self.num_obs = sd["decoder.4.weight"].shape[0]
-        self.dance_period = dance_period
-        self.extras = list(extras) if extras is not None else (["dance_clock"] if dance_period else [])
+        self.extras = list(extras or [])
         want = 100 + sum(self.EXTRA_DIMS[e] for e in self.extras)
         assert self.num_obs == want, f"{checkpoint}: {self.num_obs} obs, extras {self.extras} need {want}"
 
@@ -264,10 +262,7 @@ class DwaqPolicy(Skill):
         parts = [state.ang_vel_b, state.gravity_b, command[:, :3], state.q[:, idx] - self.default29,
                  state.qd[:, idx], last_action, torch.sin(2 * math.pi * leg), torch.cos(2 * math.pi * leg)]
         for e in self.extras:
-            if e == "dance_clock":
-                ph = 2 * math.pi * (t % self.dance_period) / self.dance_period
-                parts.append(torch.stack([torch.sin(ph), torch.cos(ph)], dim=1))
-            elif e == "height_cmd":
+            if e == "height_cmd":
                 h = command[:, 3] if command.shape[1] > 3 else torch.full_like(t, self.NOMINAL_HEIGHT)
                 parts.append((h - self.NOMINAL_HEIGHT).unsqueeze(1))
         return torch.clamp(torch.cat(parts, dim=1), -100.0, 100.0)
@@ -284,42 +279,3 @@ class DwaqPolicy(Skill):
 
     def encode(self, targets29):
         return (targets29 - self.default29) / 0.25
-
-
-class ClipUpperBody(Skill):
-    """Plays a retargeted clip (tools/retarget_g1.py output) on the upper body, eased in from the current pose."""
-
-    name = "clip"
-
-    def __init__(self, path: str, device="cpu", blend_in: float = 1.0, lead: float = 0.04):
-        import numpy as np
-
-        r = np.load(path)
-        self.device = torch.device(device)
-        self.q = torch.tensor(r["q"], dtype=torch.float32, device=self.device)
-        self.dt, self.period = float(r["dt"]), float(r["period"])
-        self.joints = [str(j) for j in r["joints"]]
-        self.blend_in, self.lead = blend_in, lead
-        self.kp = torch.tensor([DwaqPolicy._kp["waist"] if "waist" in n else
-                                next(v for k, v in DwaqPolicy._kp.items() if k in n) for n in self.joints],
-                               dtype=torch.float32, device=self.device)
-        self.kd = torch.tensor([next(v for k, v in DwaqPolicy._kd.items() if k in n) for n in self.joints],
-                               dtype=torch.float32, device=self.device)
-        self.start = None
-
-    def reset(self, env_ids=None):
-        if env_ids is None or self.start is None:
-            self.start = None
-        else:
-            self.start[env_ids] = float("nan")
-
-    def act(self, state, command=None):
-        idx = state.index(self.joints)
-        if self.start is None:
-            self.start = state.q[:, idx].clone()
-        bad = torch.isnan(self.start[:, 0])
-        if bad.any():
-            self.start[bad] = state.q[bad][:, idx]
-        k = ((state.time + self.lead) / self.dt).long() % self.q.shape[0]
-        alpha = torch.clamp(state.time / self.blend_in, 0.0, 1.0).unsqueeze(1)
-        return self.start + alpha * (self.q[k] - self.start)

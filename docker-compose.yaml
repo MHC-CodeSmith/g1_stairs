@@ -1,7 +1,7 @@
 # Build:   docker compose build
 # Record:  docker compose run --rm record           -> ./output/g1_stairs.mp4
-# Train:   docker compose run --rm train g1_strut/train.py --headless --task <task> ...   (Isaac Sim 5.1; logs -> ./logs/<task>)
-# Video:   g1_strut/make_isaac_video.sh <checkpoint> <name>   (-> output/<name>.mp4)
+# Train:   docker compose run --rm train g1_rl/train.py --headless --task <task> ...   (Isaac Sim 5.1; logs -> ./logs/<task>)
+# Video:   g1_rl/make_isaac_video.sh <checkpoint> <name>   (-> output/<name>.mp4)
 # Viewer:  docker compose up viewer    (runs as your uid, which the X server already trusts: SI:localuser)
 services:
   record:
@@ -31,7 +31,7 @@ services:
     command: ["--mode", "viewer", "--loop"]
 
   train:
-    image: g1-strut-isaaclab:latest
+    image: g1-isaaclab:latest
     build: { context: ., dockerfile: docker/Dockerfile.train }
     runtime: nvidia
     environment:
@@ -46,7 +46,7 @@ services:
       - isaac-cache-glcache:/root/.cache/nvidia/GLCache
       - isaac-compute-cache:/root/.nv/ComputeCache
     ipc: host
-    command: ["g1_strut/train.py", "--headless", "--num_envs", "4096",
+    command: ["g1_rl/train.py", "--headless", "--num_envs", "4096",
               "--init_checkpoint", "/workspace/TienKung-Lab/logs/g1_dwaq/2026-01-16_00-46-00/model_9999.pt"]
 
   render:   # Isaac Sim 6.0 RTX: replays rollouts from `train` (5.1's renderer crashes on driver 595)
@@ -62,7 +62,7 @@ services:
     volumes: [ "./:/workspace/g1_stairs" ]
     working_dir: /workspace/g1_stairs
     entrypoint: ["/isaac-sim/python.sh"]
-    command: ["g1_strut/render_isaac6.py", "--help"]
+    command: ["g1_rl/render_isaac6.py", "--help"]
 
 volumes:
   isaac-cache-kit:

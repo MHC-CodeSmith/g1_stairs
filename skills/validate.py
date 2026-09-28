@@ -5,7 +5,6 @@
   dwaq_equivalence  DwaqPolicy adapter vs the env + rsl_rl policy it came from (must match to ~1e-5)
   agile_native      AGILE velocity-height on flat ground with its own PD gains: walk, turn, crouch, rise
   agile_remap       same, executed with our (TienKung) gains through gain_equivalent_target at 50 Hz
-  agile_arms        agile_native with the bully clip on the arms (AGILE saw random arms only while standing)
 """
 import argparse
 import os
@@ -95,7 +94,6 @@ def run_agile(mode):
     legs = sr.ids(agile.joints)
     upper_names = [n for n in sr.names if n not in agile.joints]
     upper = sr.ids(upper_names)
-    clip = registry.load("bully_clip", device=env.device) if mode == "arms" else None
     tk_kp = torch.tensor([float(next(v for k, v in DwaqPolicy._kp.items() if k in n)) for n in agile.joints], device=env.device)
     tk_kd = torch.tensor([float(next(v for k, v in DwaqPolicy._kd.items() if k in n)) for n in agile.joints], device=env.device)
     if args.ankle_effort:
@@ -125,12 +123,7 @@ def run_agile(mode):
         if mode == "remap":
             q, qd = st.q[:, legs], st.qd[:, legs]
             tgt = gain_equivalent_target(tgt, q, qd, agile.kp, agile.kd, tk_kp, tk_kd)
-        up = upper_hold
-        if clip is not None:
-            cidx = [upper_names.index(j) for j in clip.joints]
-            up = upper_hold.clone()
-            up[:, cidx] = clip.act(st)
-        sr.step([(legs, tgt), (upper, up)])
+        sr.step([(legs, tgt), (upper, upper_hold)])
         f = sr.fallen() & torch.isnan(fell_at)
         fell_at[f] = t
         v = sr.robot.data.root_lin_vel_b
@@ -148,7 +141,7 @@ def run_agile(mode):
 
 
 checks = {"dwaq_equivalence": check_dwaq_equivalence, "agile_native": lambda: run_agile("native"),
-          "agile_remap": lambda: run_agile("remap"), "agile_arms": lambda: run_agile("arms")}
+          "agile_remap": lambda: run_agile("remap")}
 checks[args.check]()  # one per process: Isaac Lab builds one scene per app
 sys.stdout.flush()
 os._exit(0)

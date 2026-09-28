@@ -13,7 +13,7 @@ from isaaclab.terrains import TerrainGeneratorCfg
 from legged_lab.envs import *  # noqa: F401,F403
 from legged_lab.utils import task_registry
 
-import g1_strut.tasks  # noqa: F401  (registers our tasks)
+import g1_rl.body  # noqa: F401  (registers g1_body)
 from skills.adapters import RobotState
 
 TILE, BORDER, PLATFORM = 8.0, 0.5, 1.5

@@ -5,17 +5,13 @@ derived from, other projects and keep their own licenses.
 
 | What | Where in this repo | Origin | License |
 |---|---|---|---|
-| Policy checkpoints (fine-tunes of the G1DWAQ_Lab `g1_dwaq` model) | `checkpoints/*.pt` | [G1DWAQ_Lab](https://github.com/liuyufei-nubot/G1DWAQ_Lab) | BSD-3-Clause (text below) |
-| PPO + β-VAE update adapted from the TienKung-Lab `rsl_rl` fork's `DWAQPPO.update` | `g1_strut/distill.py` | G1DWAQ_Lab / TienKung-Lab / RSL-RL | BSD-3-Clause (text below) |
+| Policy checkpoints you train from the G1DWAQ_Lab `g1_dwaq` model | `checkpoints/*.pt` (none released yet) | [G1DWAQ_Lab](https://github.com/liuyufei-nubot/G1DWAQ_Lab) | BSD-3-Clause (text below) |
+| PPO + β-VAE update adapted from the TienKung-Lab `rsl_rl` fork's `DWAQPPO.update` | `g1_rl/distill.py` | G1DWAQ_Lab / TienKung-Lab / RSL-RL | BSD-3-Clause (text below) |
 | Staircase geometry from `stairs_scene.xml` | `scenes/g1_stairs_scene.xml` | G1DWAQ_Lab | BSD-3-Clause (text below) |
 | G1DWAQ_Lab itself (training code, robot model, pretrained policy) | `G1DWAQ_Lab/` (git submodule, not copied) | G1DWAQ_Lab | BSD-3-Clause |
 | WBC-AGILE G1 velocity-height policy (TorchScript, ONNX, I/O spec) and two config files | `skills/imported/agile/` | [nvidia-isaac/WBC-AGILE](https://github.com/nvidia-isaac/WBC-AGILE) at the commit in `skills/imported/agile/COMMIT` | Apache-2.0 (+ BSD-3 portions), `skills/imported/agile/LICENCE` |
-| MediaPipe Pose Landmarker (heavy) model | downloaded by `tools/Dockerfile.pose` at build time, not redistributed | Google MediaPipe | Apache-2.0 |
 | Isaac Sim / Isaac Lab | pulled by `docker/Dockerfile.train` and the `render` service at build/run time, not redistributed | NVIDIA | Isaac Sim: NVIDIA license (accepted via `ACCEPT_EULA=Y`); Isaac Lab: BSD-3-Clause |
 | MuJoCo, PyTorch, imageio, NumPy | installed from PyPI at build time | their projects | Apache-2.0 / BSD-style |
-
-`reference/bully_g1.npz` holds robot joint angles produced by `tools/retarget_g1.py` from a short dance clip; the
-clip itself is not included in the repository.
 
 ## G1DWAQ_Lab license (BSD-3-Clause)
 

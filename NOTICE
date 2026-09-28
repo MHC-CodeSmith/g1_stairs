@@ -4,5 +4,4 @@ Copyright 2026 MHC-CodeSmith
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
 This repository also contains or is derived from third-party material under its own licenses; see
-THIRD_PARTY_NOTICES.md. In particular, the policy checkpoints in checkpoints/ are fine-tuned from the
-G1DWAQ_Lab pretrained model and are distributed under its BSD 3-Clause terms.
+THIRD_PARTY_NOTICES.md. Policy checkpoints fine-tuned from the G1DWAQ_Lab pretrained model fall under its BSD 3-Clause terms.

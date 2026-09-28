@@ -1,7 +1,0 @@
-# MediaPipe Pose (heavy) for extracting dance reference motion from video. Tool image, not used at train time.
-FROM python:3.12-slim
-RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 curl \
-    && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir mediapipe==0.10.21 imageio==2.37.0 "numpy<2" opencv-python-headless
-RUN mkdir /models && curl -sL -o /models/pose_landmarker_heavy.task \
-    https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task

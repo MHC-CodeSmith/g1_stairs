@@ -1,4 +1,4 @@
-"""G1 stair climbing with the Spider-Man 3 strut: DWAQ stair policy fine-tuned with an upper-body dance reward."""
+"""G1 training in Isaac Lab: multi-teacher distillation of pretrained policies into one body controller."""
 
 import os
 

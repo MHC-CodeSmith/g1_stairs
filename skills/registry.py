@@ -19,10 +19,7 @@ def load(name, device="cpu"):
     spec = SKILLS[name]
     kind = spec["kind"]
     if kind == "dwaq":
-        return adapters.DwaqPolicy(path(name), device=device, dance_period=spec.get("dance_period"), name=name,
-                                   extras=spec.get("extras"))
+        return adapters.DwaqPolicy(path(name), device=device, name=name, extras=spec.get("extras"))
     if kind == "agile_velocity_height":
         return adapters.AgileVelocityHeight(path(name), device=device)
-    if kind == "clip":
-        return adapters.ClipUpperBody(path(name), device=device)
     raise ValueError(f"unknown skill kind {kind}")

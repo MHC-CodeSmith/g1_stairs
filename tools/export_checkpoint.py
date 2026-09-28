@@ -1,7 +1,7 @@
 """Export a training checkpoint for release: policy weights + provenance, without optimizer state.
 
   docker run --rm -v $PWD:/w -w /w --entrypoint python g1-stairs:latest tools/export_checkpoint.py \
-      logs/g1_body/<run>/model_1499.pt checkpoints/g1_body.pt --task g1_body --parent checkpoints/g1_dwaq_bully.pt \
+      logs/g1_body/<run>/model_1499.pt checkpoints/g1_body.pt --task g1_body --parent <warm-start checkpoint> \
       --extras height_cmd
 
 The output loads everywhere a training checkpoint does for inference or warm starts (`model_state_dict` key); it
@@ -19,7 +19,6 @@ p.add_argument("dst")
 p.add_argument("--task", required=True)
 p.add_argument("--parent", default=None, help="checkpoint this run was warm-started from")
 p.add_argument("--extras", nargs="*", default=[], help="observation extras after the upstream 100 (DwaqPolicy)")
-p.add_argument("--dance_period", type=float, default=None)
 p.add_argument("--note", default="")
 a = p.parse_args()
 
@@ -28,7 +27,7 @@ out = {
     "model_state_dict": src["model_state_dict"],
     "iter": src.get("iter"),
     "meta": {"task": a.task, "source_run": os.path.relpath(a.src), "parent": a.parent, "extras": a.extras,
-             "dance_period": a.dance_period, "num_obs": int(src["model_state_dict"]["decoder.4.weight"].shape[0]),
+             "num_obs": int(src["model_state_dict"]["decoder.4.weight"].shape[0]),
              "note": a.note},
 }
 torch.save(out, a.dst)

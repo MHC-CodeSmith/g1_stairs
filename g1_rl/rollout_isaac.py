@@ -1,11 +1,11 @@
 """Roll out a G1 DWAQ policy on a staircase in Isaac Sim 5.1 / Isaac Lab (headless physics) -> .npz, with metrics.
 
-  python g1_strut/rollout_isaac.py --checkpoint logs/g1_dwaq_strut/<run>/model_XXXX.pt --out output/isaac_strut.npz
+  python g1_rl/rollout_isaac.py --task g1_dwaq --checkpoint <model.pt> --out output/rollout.npz
 
 One pyramid-stairs tile (default 0.15 m rise / 0.31 m tread: 8 steps up, platform, 8 steps down). The robot spawns on
 the flat border facing +x; an autopilot holds heading 0 and steers back to the centre line with vy. The .npz holds
-every link's world pose per control step and the terrain mesh; g1_strut/render_isaac6.py replays it in Isaac Sim 6.0 for video (Isaac Sim 5.1's RTX renderer
-crashes on this host's 595 driver; its physics is fine).
+every link's world pose per control step and the terrain mesh; g1_rl/render_isaac6.py replays it in Isaac Sim 6.0 for
+video (Isaac Sim 5.1's RTX renderer crashes on this host's 595 driver; its physics is fine).
 """
 import argparse
 import math
@@ -17,12 +17,12 @@ from isaaclab.app import AppLauncher
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument("--task", type=str, default="g1_dwaq_bully")
+parser.add_argument("--task", type=str, default="g1_dwaq")
 parser.add_argument("--checkpoint", type=str, required=True)
-parser.add_argument("--out", type=str, default="output/isaac_strut.npz")
+parser.add_argument("--out", type=str, default="output/rollout.npz")
 parser.add_argument("--vx", type=float, default=0.9)
-parser.add_argument("--upper", type=str, default="bully",
-                    help="g1_body only: upper-body source from its motion library (bully, groove, strut, hold, random)")
+parser.add_argument("--upper", type=str, default="default",
+                    help="g1_body only: upper-body source from its motion library (default, hold, random)")
 parser.add_argument("--seconds", type=float, default=14.0)
 parser.add_argument("--step_height", type=float, default=0.15)
 parser.add_argument("--step_width", type=float, default=0.31)
@@ -41,13 +41,13 @@ from rsl_rl.runners import DWAQOnPolicyRunner  # noqa: E402
 from legged_lab.envs import *  # noqa: E402,F401,F403
 from legged_lab.utils import task_registry  # noqa: E402
 
-import g1_strut.tasks  # noqa: E402,F401
-import g1_strut.body  # noqa: E402,F401  (registers g1_body)
+import g1_rl.body  # noqa: E402,F401  (registers g1_body)
 import rsl_rl.runners.dwaq_on_policy_runner as _runner_mod  # noqa: E402
-from g1_strut.distill import DistillDWAQPPO  # noqa: E402
+from g1_rl.distill import DistillDWAQPPO  # noqa: E402
 
 _runner_mod.DistillDWAQPPO = DistillDWAQPPO  # g1_body's agent config names it; the runner resolves it with eval()
-from g1_strut import chown_to_host, dance, rewards  # noqa: E402
+from g1_rl import chown_to_host  # noqa: E402
+from g1_rl.body import UPPER_JOINTS  # noqa: E402
 
 TILE = 8.0
 BORDER = 0.5
@@ -102,25 +102,17 @@ def main():
     policy = runner.alg.policy
 
     robot = env.scene["robot"]
-    upper_ids, _ = robot.find_joints(dance.JOINTS, preserve_order=True)
+    upper_ids, _ = robot.find_joints(UPPER_JOINTS, preserve_order=True)
     body_pos, body_quat = [], []
     obs, obs_hist = env.get_observations()
     max_z, max_x, fell_t, sq_err, n = 0.0, 0.0, None, 0.0, 0
     start_y = float(terrain.env_origins[0, 1])
-    if hasattr(env, "motion"):  # g1_body: pin the upper body to one motion-library source, from its start
-        m = env.motion
-        m.source[:] = m.names.index(args_cli.upper)
-        m.offset[:], m.speed[:] = 0.0, 1.0
+    ref_fn = None
+    if hasattr(env, "motion"):  # g1_body: pin the upper body to one motion-library source
+        env.motion.source[:] = env.motion.names.index(args_cli.upper)
 
         def ref_fn(e):
             return e.motion.targets(e.episode_length_buf.float() * e.step_dt)
-        ref_fn.__name__ = f"{args_cli.upper}_motion"
-    elif hasattr(env, "dance_reference"):  # clip played on the arms: error = how well the PD follows it
-        def ref_fn(e):
-            return e.dance_reference()
-        ref_fn.__name__ = "clip_reference"
-    else:
-        ref_fn = rewards.groove_dance_reference if hasattr(env, "dance_phase") else rewards.strut_dance_reference
     for k in range(int(args_cli.seconds / env.step_dt)):
         w, qx, qy, qz = robot.data.root_quat_w[0].tolist()
         yaw = math.atan2(2 * (w * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
@@ -140,7 +132,7 @@ def main():
             touching = [n for n, v in zip(cs.body_names, f.tolist()) if v > 1.0 and "ankle" not in n]
             print(f"[reset] t={t:.2f}s pelvis z={pos[2]:.2f} bodies in contact: {touching}", flush=True)
         max_z, max_x = max(max_z, float(pos[2])), max(max_x, float(pos[0]) - start_x)
-        if t > 1.0:
+        if ref_fn is not None and t > 1.0:
             err = robot.data.joint_pos[0, upper_ids] - ref_fn(env)[0]
             sq_err += float(torch.mean(err**2)); n += 1
         body_pos.append(robot.data.body_pos_w[0].cpu().numpy().copy())
@@ -166,7 +158,8 @@ def main():
     print(f" reached top        : {max_z > top + 0.6}")
     print(f" distance covered   : {max_x:.2f} m (stairs end at ~{climb + 0.35:.2f} m)")
     print(f" fell / reset       : {fell_t is not None}" + (f" (t={fell_t:.2f}s)" if fell_t else ""))
-    print(f" upper-body RMS err : {rms:.3f} rad vs {ref_fn.__name__.split('_')[0]} reference")
+    if ref_fn is not None:
+        print(f" upper-body RMS err : {rms:.3f} rad vs the {args_cli.upper} upper-body target")
     print(f" rollout            : {args_cli.out}")
     print("=" * 64)
 

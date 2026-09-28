@@ -1,17 +1,18 @@
 """Task `g1_body`: one lower-body controller distilled from teachers of different origins, under any upper body.
 
 Student: DWAQ actor-critic (blind, 5-frame history) driving legs + waist pitch. The upper body (arms, waist
-yaw/roll) is driven by a motion library that stands in for any upper-body skill (dance clips, holds, random reaches;
-later teleop/VLA manipulation). Command: [vx, vy, yaw rate] + pelvis height.
+yaw/roll) is driven by a motion library that stands in for an upper-body skill (default pose, fixed holds, random
+reaches; later teleop or a manipulation policy). Command: [vx, vy, yaw rate] + pelvis height.
 
 Teachers, chosen per env by context (only where each was validated, see skills/validate.py):
   - standing on a flat tile (height command 0.62-0.72 m): NVIDIA WBC-AGILE velocity-height, legs only, its targets
     converted to our PD gains (gain_equivalent_target)
-  - everything else (walking, stairs, rough): our DWAQ bully policy, legs + waist pitch
-Training: PPO on the task reward + annealed distillation toward the active teacher (g1_strut/distill.py).
+  - everything else (walking, stairs, rough): the G1DWAQ_Lab stair policy, legs + waist pitch
+Training: PPO on the task reward + annealed distillation toward the active teacher (g1_rl/distill.py).
 """
 from __future__ import annotations
 
+import copy
 import math
 
 import isaaclab.terrains as terrain_gen
@@ -20,11 +21,10 @@ import torch
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
+from legged_lab.envs.g1.g1_dwaq_config import G1DwaqAgentCfg, G1DwaqEnvCfg, G1DwaqRewardCfg
 from legged_lab.envs.g1.g1_dwaq_env import G1DwaqEnv
 from legged_lab.utils.task_registry import task_registry
 
-from g1_strut import clip_dance, dance, groove
-from g1_strut.tasks import G1ClipRewardCfg, G1StrutAgentCfg, G1StrutEnvCfg
 from skills import registry
 from skills.adapters import RobotState, gain_equivalent_target
 
@@ -32,8 +32,15 @@ AGILE_HEIGHT_RANGE = (0.62, 0.72)   # where the imported policy tracks height in
 NOMINAL_HEIGHT = 0.72
 FLAT_SHARE, STAIRS_SHARE = 0.25, 0.45
 
+UPPER_JOINTS = [  # driven by the motion library, not the student
+    "waist_yaw_joint", "waist_roll_joint",
+    "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint",
+    "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint",
+    "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint",
+]
 # upper-body sources: name -> probability
-SOURCES = {"bully": 0.3, "groove": 0.15, "strut": 0.15, "hold": 0.15, "random": 0.25}
+SOURCES = {"default": 0.4, "hold": 0.3, "random": 0.3}
 HOLDS = [  # (name, {joint: angle}) arm poses for carrying / reaching / idle
     ("tienkung_default", {"left_shoulder_pitch_joint": .35, "right_shoulder_pitch_joint": .35,
                           "left_shoulder_roll_joint": .18, "right_shoulder_roll_joint": -.18,
@@ -55,16 +62,27 @@ def height_tracking(env, std: float) -> torch.Tensor:
 
 
 @configclass
-class G1BodyRewardCfg(G1ClipRewardCfg):
+class G1BodyRewardCfg(G1DwaqRewardCfg):
     height = RewTerm(func=height_tracking, weight=1.0, params={"std": 0.05})
+
+    def __post_init__(self):
+        if hasattr(super(), "__post_init__"):
+            super().__post_init__()
+        # The upper body is driven externally: keep the default-pose pull only on waist pitch, and penalize only leg
+        # contacts (moving arms may touch the torso).
+        self.joint_deviation_arms.params = {"asset_cfg": SceneEntityCfg("robot", joint_names=["waist_pitch_joint"])}
+        self.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
+            "contact_sensor", body_names=["pelvis", ".*_hip_.*", ".*_knee_.*"])
 
 
 @configclass
-class G1BodyEnvCfg(G1StrutEnvCfg):
+class G1BodyEnvCfg(G1DwaqEnvCfg):
     reward = G1BodyRewardCfg()
 
     def __post_init__(self):
         super().__post_init__()
+        # the upstream config assigns a module-level TerrainGeneratorCfg; copy before editing
+        self.scene.terrain_generator = copy.deepcopy(self.scene.terrain_generator)
         subs = self.scene.terrain_generator.sub_terrains
         stairs = [k for k in subs if k.startswith("stairs")]
         rest = [k for k in subs if k not in stairs]
@@ -77,32 +95,25 @@ class G1BodyEnvCfg(G1StrutEnvCfg):
 
 
 @configclass
-class G1BodyAgentCfg(G1StrutAgentCfg):
+class G1BodyAgentCfg(G1DwaqAgentCfg):
     experiment_name: str = "g1_body"
     wandb_project: str = "g1_body"
 
     def __post_init__(self):
         super().__post_init__()
         self.max_iterations = 1500
+        self.save_interval = 100
         self.algorithm.class_name = "DistillDWAQPPO"
 
 
 class MotionLibrary:
-    """Per-env upper-body targets (N, 16) in dance.JOINTS order, eased in from the default pose after a reset."""
+    """Per-env upper-body targets (N, 16) in UPPER_JOINTS order, eased in from the default pose after a reset."""
 
     def __init__(self, env, blend_in=1.0):
         self.env, self.device, self.n, self.blend_in = env, env.device, env.num_envs, blend_in
-        dt = env.step_dt
-        q, _, period, joints = clip_dance.load()
-        assert joints == dance.JOINTS
-        self.tables = {  # (samples, 16) over one period, and the period
-            "bully": (torch.tensor(q, device=self.device), period),
-            "groove": (torch.tensor(groove.table(), dtype=torch.float32, device=self.device), groove.PERIOD),
-            "strut": (torch.tensor(dance.table(), dtype=torch.float32, device=self.device), 0.8),
-        }
         self.names = list(SOURCES)
         self.probs = torch.tensor([SOURCES[k] for k in self.names], device=self.device)
-        ids = env.robot.find_joints(dance.JOINTS, preserve_order=True)[0]
+        ids = env.robot.find_joints(UPPER_JOINTS, preserve_order=True)[0]
         self.default = env.robot.data.default_joint_pos[0, ids].clone()
         lim = env.robot.data.soft_joint_pos_limits[0, ids]
         self.lo, self.hi = 0.6 * lim[:, 0], 0.6 * lim[:, 1]
@@ -110,10 +121,8 @@ class MotionLibrary:
         self.holds = torch.stack([self.default.clone() for _ in HOLDS])
         for i, (_, pose) in enumerate(HOLDS):
             for j, v in pose.items():
-                self.holds[i, dance.JOINTS.index(j)] = v
+                self.holds[i, UPPER_JOINTS.index(j)] = v
         self.source = torch.zeros(self.n, dtype=torch.long, device=self.device)
-        self.offset = torch.zeros(self.n, device=self.device)
-        self.speed = torch.ones(self.n, device=self.device)
         self.hold_id = torch.zeros(self.n, dtype=torch.long, device=self.device)
         self.seg_from = self.default.repeat(self.n, 1)
         self.seg_to = self.default.repeat(self.n, 1)
@@ -126,8 +135,6 @@ class MotionLibrary:
         if k == 0:
             return
         self.source[ids] = torch.multinomial(self.probs, k, replacement=True)
-        self.offset[ids] = torch.rand(k, device=self.device)
-        self.speed[ids] = 0.85 + 0.3 * torch.rand(k, device=self.device)
         self.hold_id[ids] = torch.randint(len(HOLDS), (k,), device=self.device)
         self.seg_from[ids] = self.default
         self.seg_to[ids] = self.default
@@ -140,11 +147,9 @@ class MotionLibrary:
             m = self.source == si
             if not m.any():
                 continue
-            if name in self.tables:
-                tab, period = self.tables[name]
-                ph = (t[m] * self.speed[m] / period + self.offset[m]) % 1.0
-                out[m] = tab[(ph * tab.shape[0]).long() % tab.shape[0]]
-            elif name == "hold":
+            if name == "default":
+                continue
+            if name == "hold":
                 out[m] = self.holds[self.hold_id[m]]
             else:  # random smooth reaches: cosine segments to uniform targets, 0.5-2 s each
                 done = m & (t - self.seg_t0 >= self.seg_len)
@@ -168,7 +173,7 @@ class G1BodyEnv(G1DwaqEnv):
         self.height_cmd = torch.full((self.num_envs,), NOMINAL_HEIGHT, device=dev)
         self.height_goal = self.height_cmd.clone()
         self.agile_ctx = torch.zeros(self.num_envs, dtype=torch.bool, device=dev)
-        self.upper_ids = torch.tensor(self.robot.find_joints(dance.JOINTS, preserve_order=True)[0], device=dev)
+        self.upper_ids = torch.tensor(self.robot.find_joints(UPPER_JOINTS, preserve_order=True)[0], device=dev)
         self.motion = MotionLibrary(self)
         names = list(self.robot.joint_names)
         self.joint_names = names
@@ -180,10 +185,10 @@ class G1BodyEnv(G1DwaqEnv):
         col_kind = [keys[int(np.min(np.where(i / gen.num_cols + 0.001 < np.cumsum(props))[0]))] for i in range(gen.num_cols)]
         self.flat_cols = torch.tensor([k == "flat" for k in col_kind], device=dev)
         # teachers
-        self.t_dwaq = registry.load("dwaq_bully", device=dev)
+        self.t_dwaq = registry.load("dwaq_upstream", device=dev)
         self.t_agile = registry.load("agile_velocity_height", device=dev)
         self.agile_ids = torch.tensor([names.index(j) for j in self.t_agile.joints], device=dev)
-        self.lower_ids = torch.tensor([names.index(j) for j in names if j not in dance.JOINTS], device=dev)  # legs + waist pitch
+        self.lower_ids = torch.tensor([names.index(j) for j in names if j not in UPPER_JOINTS], device=dev)  # legs + waist pitch
         self.kp = self.robot.data.joint_stiffness[0].clone()
         self.kd = self.robot.data.joint_damping[0].clone()
         self.teacher_actions = torch.zeros(self.num_envs, self.num_actions, device=dev)
@@ -198,8 +203,7 @@ class G1BodyEnv(G1DwaqEnv):
 
     def obs_map_from(self, old_obs: int):
         """Warm start: the first 100 obs are the upstream DWAQ layout. From a g1_body checkpoint (101 obs) keep
-        everything; from another task, drop its extras (e.g. the bully dance clock) and start the height command
-        with zero weights."""
+        everything; from an upstream DWAQ checkpoint (100 obs) start the height command with zero weights."""
         assert old_obs >= 100
         if old_obs == 101:
             return list(range(101))
@@ -237,7 +241,7 @@ class G1BodyEnv(G1DwaqEnv):
         return torch.cat([actor, h], dim=-1), torch.cat([critic[:, :n], h, critic[:, n:]], dim=-1)
 
     def check_reset(self):
-        """Falls only (see G1ClipDanceEnv): arm-torso self contact is not a fall."""
+        """Falls only: arm-torso contact from the externally driven upper body is not a fall."""
         tilted = self.robot.data.projected_gravity_b[:, 2] > -0.55
         low = self.base_height() < 0.35
         time_out = self.episode_length_buf >= self.max_episode_length

@@ -1,7 +1,7 @@
-"""Load a DWAQ checkpoint into a policy whose actor obs gained `extra` dims appended at the end (e.g. a dance clock).
+"""Load a DWAQ checkpoint into a policy whose actor obs gained `extra` dims appended at the end (e.g. a height command).
 
 New input columns / decoder outputs are zero-initialized, so the expanded network starts out computing exactly what
-the source policy computed and learns to use the new inputs. Layouts (rsl_rl ActorCritic_DWAQ + G1DanceEnv):
+the source policy computed and learns to use the new inputs. Layouts (rsl_rl ActorCritic_DWAQ):
   actor.0   input = [latent code (19), obs]                       -> new columns at the end
   critic.0  input = [obs, privileged..., height scan]             -> new columns right after obs
   encoder.0 input = obs history, frame-major (hist x obs)         -> new columns at the end of every frame
@@ -16,7 +16,7 @@ def load_mapped(policy, src_state: dict, obs_map: list[int | None], hist_len: in
     obs_map[i] = source obs index feeding new obs index i, or None for a new input (zero weights / zero decoder
     row). Applies to the actor input (after the 19-dim code), the critic's leading actor block (the privileged
     tail is kept in order), every encoder history frame and the decoder output. Source dims absent from the map are
-    dropped (e.g. a dance clock the new task doesn't have).
+    dropped (inputs the new task doesn't have).
     """
     dst = policy.state_dict()
     new_obs = dst["decoder.4.weight"].shape[0]
