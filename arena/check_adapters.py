@@ -413,7 +413,12 @@ def check_gmt(seconds=4.0, motion="walk_stand.pkl"):
         return a_ref
 
     env.policy_jit = wrapped
-    env.run()
+    import tempfile
+    os.chdir(tempfile.mkdtemp())                   # run() writes its video under ./mujoco_videos
+    try:
+        env.run()
+    finally:
+        os.chdir(cwd)
     q = env.data.qpos[3:7]
     fell = (1 - 2 * (q[1] ** 2 + q[2] ** 2)) < 0.5
     return report("gmt", res["oe"], res["ae"], res["n"], fell)
