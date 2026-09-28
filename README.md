@@ -113,6 +113,8 @@ height command starts with zero weights). The approach follows HANDOFF
 - The MuJoCo runner supports the upstream observation only (no height command).
 - Not tested on hardware.
 
+See `docs/HANDOFF.md` for current status and next steps.
+
 ## Repository layout
 
 | Path | Contents |
