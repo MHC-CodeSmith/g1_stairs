@@ -29,7 +29,7 @@ from arena.world import G1_29_XML, REPO  # noqa: E402
 
 R.PUSHES[:] = [(3.0 + 3 * i, 0.1, np.array([0.0, (-1) ** i * f, 0.0])) for i, f in
                enumerate(range(100, 1001, 100))]
-HEIGHT_POLICIES = {"agile_vel_height", "gr00t_wbc", "sonic"}
+HEIGHT_POLICIES = {"agile_vel_height", "gr00t_wbc", "sonic", "g1_body"}
 TESTS = {  # name: run() kwargs
     "flat": dict(terrain="flat", schedule="walk", seconds=20),
     "no_hands": dict(terrain="flat", schedule="walk", seconds=20, robot_xml=G1_29_XML),

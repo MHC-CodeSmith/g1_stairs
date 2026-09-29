@@ -25,7 +25,7 @@ g1_body_student:
   kind: dwaq
   path: checkpoints/g1_body.pt
   extras: [height_cmd]
-  source: this repo, g1_body distillation (teachers dwaq_upstream + agile_velocity_height); not released yet, train it first
+  source: this repo, g1_body distillation (teachers dwaq_upstream + gr00t_wbc), iteration 700 of 1500 from dwaq_upstream (later ones lose the stairs in MuJoCo)
   controls: legs + waist pitch (upper body free for any upper-body skill)
   command: [vx, vy, yaw_rate, pelvis_height]
-  good_at: (intended) walking, stairs and crouching under arbitrary upper-body motion
+  good_at: walking, stairs and crouching (0.50-0.72 m) under arbitrary upper-body motion; see docs/SCORECARD.md

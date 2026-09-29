@@ -313,7 +313,8 @@ class _SkillWrap(ArenaPolicy):
         import torch
         self.t = st.t - self.t0
         c = [cmd.vx, cmd.vy, cmd.wz] + ([cmd.height if cmd.height is not None else 0.72] if self.height_cmd else [])
-        return self.skill.act(self._rs(st), torch.tensor([c], dtype=torch.float32))[0].numpy()
+        out = self.skill.act(self._rs(st), torch.tensor([c], dtype=torch.float32))[0].numpy()
+        return out[self._sel] if hasattr(self, "_sel") else out
 
 
 class Dwaq(_SkillWrap):
@@ -340,6 +341,31 @@ class Agile(_SkillWrap):
         self.kp, self.kd = self.skill.kp.numpy().astype(float), self.skill.kd.numpy().astype(float)
 
 
+G1BODY_UPPER = [  # g1_rl/body.py UPPER_JOINTS (that module needs Isaac Lab)
+    "waist_yaw_joint", "waist_roll_joint",
+    "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint",
+    "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint",
+    "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint",
+]
+
+
+class G1Body(_SkillWrap):
+    """Our distilled g1_body student (teachers G1DWAQ + GR00T WBC), legs + waist pitch; the rest of the upper body is
+    left to whatever drives it (held pose, or the arena's arm waving)."""
+
+    name, uses, height_cmd = "g1_body", "vx vy wz height", True
+
+    def __init__(self):
+        from skills import registry
+        self.skill = registry.load("g1_body_student")
+        allj = list(self.skill.joints)
+        self._sel = [i for i, j in enumerate(allj) if j not in G1BODY_UPPER]
+        self.joints = [allj[i] for i in self._sel]
+        self.kp = self.skill.kp.numpy().astype(float)[self._sel]
+        self.kd = self.skill.kd.numpy().astype(float)[self._sel]
+
+
 REGISTRY = {
     "unitree_rl_gym": RlGym,
     "mujoco_playground": PlaygroundPolicy,
@@ -351,6 +377,7 @@ REGISTRY = {
     "g1dwaq_stairs": Dwaq,
     "agile_vel_height": Agile,
     "sonic": lambda: _sonic()(),
+    "g1_body": G1Body,
 }
 TRACKERS = ["sonic_tracking", "gmt", "twist"]   # take a reference clip: make_tracker(name, clip)
 

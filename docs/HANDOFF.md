@@ -22,42 +22,40 @@ the G1 29-DoF **with Dex3 hands**, as many repos combined as possible, and a pat
 - Commits as **MHC-CodeSmith** (see memory). Repo: https://github.com/MHC-CodeSmith/g1_stairs (public, Apache-2.0).
 
 ## Done
-- `skills/`: adapters for G1DWAQ (DWAQ) and NVIDIA WBC-AGILE, each verified against its original
-  (`tests/test_agile_adapter.py`, `skills/validate.py`). AGILE crouch bottoms out at ~0.62 m pelvis height (asked 0.50).
-- `g1_rl/`: Isaac Lab 2.3 (Isaac Sim 5.1) multi-teacher distillation task `g1_body`. First run
-  (`logs/g1_body/2026-09-28_04-39-19_body`, trained with the old dance teacher) kept the stairs skill but **ignored the
-  height command** (0.10 m error; only 4.5% of envs were in the crouch context; imitation weight faded too early).
-  Its checkpoint is not released.
-- `third_party.yaml` + `tools/fetch_third_party.sh`: 9 pinned repos + HF `nvidia/GEAR-SONIC`, `LeCAR-Lab/BFM-Zero`
-  into gitignored `third_party/`.
-  - License flags: BFM-Zero is CC-BY-NC; SONIC and GR00T WBC weights are under NVIDIA's Open Model License.
-  - GR00T meshes and ONNX come from LFS.
-  - `third_party/mujoco_playground/mujoco_menagerie` is a symlink to `../mujoco_menagerie`; playground needs it.
-- `arena/` (MuJoCo 3.6, image `g1-arena`, CPU): Unitree G1 29-DoF + Dex3 model (43 motors), flat / stairs / rough.
-  - Adapters in `arena/policies.py` (`REGISTRY`): unitree_rl_gym, mujoco_playground, g1_walk37_{baseline,robust},
-    gr00t_wbc, holosoma_{fastsac,ppo}, g1dwaq_stairs, agile_vel_height.
-  - `arena/check_adapters.py` runs each repo's own control code on its own model: **all 7 PASS** (max diff ≤ 4e-6).
-  - Gotchas that took time: recompute derived state after `mj_step`; use `mjOBJ_XBODY`, not `mjOBJ_BODY`;
-    playground's lin vel is at the `imu_in_pelvis` site; holosoma sorts obs terms alphabetically.
+- `skills/`: adapters for G1DWAQ (DWAQ), NVIDIA WBC-AGILE and GR00T WBC (`Gr00tWbc`, TorchScript from
+  `tools/convert_gr00t_wbc.py`), each verified against its original (`tests/test_{agile,gr00t}_adapter.py`,
+  `skills/validate.py`). In our Isaac env AGILE bottoms out at ~0.62 m; GR00T WBC crouches to 0.47 m (0.024 m error).
+- `arena/` (MuJoCo 3.6, image `g1-arena`, CPU): G1 29-DoF + Dex3 (43 motors), flat / stairs / rough.
+  - Locomotion adapters (`arena/policies.py` `REGISTRY`): unitree_rl_gym, mujoco_playground, g1_walk37_{baseline,robust},
+    gr00t_wbc, holosoma_{fastsac,ppo}, g1dwaq_stairs, agile_vel_height, sonic (planner-driven), g1_body (ours).
+  - Trackers (`TRACKERS`, `arena/trackers.py`, `arena/sonic.py`): sonic_tracking, gmt, twist; `arena/track.py`.
+  - `arena/check_adapters.py`: each repo's own control code on its own model, **9/9 PASS** (max diff ≤ 7.4e-6).
+    SONIC has no Python reference (C++ only); it is validated by tracking quality.
+  - `arena/scorecard.py` → `docs/SCORECARD.md` (7 locomotion tests, 9 tracking clips).
+  - Gotchas: recompute derived state after `mj_step`; `mjOBJ_XBODY` not `mjOBJ_BODY`; playground lin vel at the
+    `imu_in_pelvis` site; holosoma sorts obs terms; GMT/TWIST read MuJoCo `sensordata` (one physics step behind qpos).
+- `g1_rl/` task `g1_body` (Isaac Lab 2.3): student DWAQ (legs + waist pitch, upper body free), teachers picked from
+  what the student observes: height command below nominal → GR00T WBC (fixed imitation weight, ~16% of envs),
+  otherwise G1DWAQ (annealed weight). Run `logs/g1_body/2026-09-28_22-14-57` (1500 it, from the upstream DWAQ).
+  - Released `checkpoints/g1_body.pt` = **iteration 700**: crosses the stairs, crouches to 0.52 m with 0.003 m error,
+    survives 1000 N pushes, flat vx err 0.049. Later iterations lose the stairs in MuJoCo (1499 falls at 5 s) as the
+    DWAQ imitation weight anneals → hold that weight (or anneal much later) in the next run.
+- `third_party.yaml` + `tools/fetch_third_party.sh`: 9 pinned repos + HF `nvidia/GEAR-SONIC`, `LeCAR-Lab/BFM-Zero`.
+  License flags: BFM-Zero CC-BY-NC; SONIC and GR00T WBC weights NVIDIA Open Model License. GR00T files come from LFS.
+  `third_party/mujoco_playground/mujoco_menagerie` must be a symlink to `../mujoco_menagerie`.
+
+## Scorecard summary (docs/SCORECARD.md)
+- Velocity tracking: AGILE best (0.016 m/s), then G1DWAQ, GR00T WBC, g1_body. Only holosoma, AGILE and SONIC survive rough.
+- Stairs: only G1DWAQ and g1_body cross. Crouch: g1_body (0.52 m, 0.003 m err) and GR00T WBC (0.50 m, 0.012 m).
+- Pushes: G1DWAQ, SONIC and g1_body survive 1000 N. g1_walk37_* fall on flat; they need their own robot model.
+- Tracking: SONIC best overall and the only one that holds heading on long clips (GMT drifts 3 m on a 38 s walk).
 
 ## Open (in order)
-1. **SONIC adapter**. Files in `third_party/hf/GEAR-SONIC/`:
-   - encoder input 1762 → 64 tokens; decoder input 994 → 29 actions; planner 11 inputs → `mujoco_qpos [1,64,36]` at 30 Hz.
-   - Semantics already read from
-     `third_party/GR00T-WholeBodyControl/gear_sonic_deploy/src/g1/g1_deploy_onnx_ref/{src/g1_deploy_onnx_ref.cpp,include/policy_parameters.hpp,include/localmotion_kplanner.hpp}`
-     and `docs/source/references/{observation_config,planner_onnx}.md`.
-   - Decoder obs (`observation_config.yaml`): token 64 + 10-frame histories (step 1) of ang vel, q − default,
-     qd, last actions, gravity.
-   - History is stored in **IsaacLab joint order**. Action: `q = default + a[isaaclab_to_mujoco[i]] * g1_action_scale[i]`
-     (all tables in `policy_parameters.hpp`).
-   - kp = armature·(2π·10)²; kd = 2·2·armature·2π·10; ankles and waist roll/pitch use 2× kp.
-   - Encoder mode `g1` = 0 (motion joints 10f step5, velocities, anchor orientation 6D).
-   - Planner output is resampled 30 → 50 Hz, velocities by finite difference ×50, 8-frame blend on replan.
-2. **Scorecard** (task 8): `python -m arena.run --policy all --terrain {flat,stairs,rough} --schedule {walk,stairs,stand}`;
-   add pushes and moving arms. First flat walk (20 s): no falls except g1_walk37_robust. vx err:
-   agile 0.017, g1dwaq 0.03, gr00t 0.042, holosoma_fastsac 0.10, playground 0.12, rl_gym 0.14.
-3. **L1 student with the LATENT recipe** (task 9) in Isaac `g1_rl/` (reuse `distill.py`; fix crouch-context sampling).
-4. **Cloud**: GR00T N1.7 fine-tune with tag `UNITREE_G1` (decoupled WBC) against L1, data teleoperated in the arena.
+1. **Next g1_body run**: keep the DWAQ imitation weight high longer (the stairs fade after ~700 it); add rough-terrain
+   robustness (student falls on rough at 15 s, like its teachers) — holosoma/AGILE could teach rough.
+2. **L1 with the LATENT recipe** (task 9): CVAE over SONIC-tracked motions + g1_body, command front-end → latents,
+   wrists and hands commanded directly.
+3. **Cloud**: GR00T N1.7 fine-tune with tag `UNITREE_G1` (decoupled WBC) against L1, data teleoperated in the arena.
    Dex3 fingers need teleop data; no pretrained policy moves them.
 
 ## Research (checked 2026-09-28)
@@ -75,7 +73,10 @@ the G1 29-DoF **with Dex3 hands**, as many repos combined as possible, and a pat
 docker build -t g1-arena -f docker/Dockerfile.arena docker
 docker run --rm -v $PWD:/workspace/g1_stairs g1-arena -m arena.check_adapters
 docker run --rm -v $PWD:/workspace/g1_stairs g1-arena -m arena.run --policy all --terrain flat
+docker run --rm -v $PWD:/workspace/g1_stairs g1-arena -m arena.scorecard --workers 14      # ~15 min, CPU
+docker run --rm -v $PWD:/workspace/g1_stairs g1-arena -m arena.track --clip all
 docker compose run --rm train g1_rl/train.py --headless --task g1_body ...   # Isaac, image g1-isaaclab
 ```
 Note: Isaac Sim 5.1's renderer crashes on driver 595; video is rendered with Isaac Sim 6.0 (`g1_rl/render_isaac6.py`).
-If the other lab jobs fill the GPUs, Isaac fails with "Failed to get DOF velocities".
+If the other lab jobs fill the GPUs, Isaac fails with "Failed to get DOF velocities" or CUDA OOM and the container
+hangs: train on one GPU (`-e NVIDIA_VISIBLE_DEVICES=1`, the user's preference) and check it is free first.
