@@ -238,7 +238,48 @@ Some repositories advertise a lot (dozens of tasks, thousands of clips); others 
 G1 is what comes **pre-trained and ready to run**. Counts below are from the repositories themselves (files present,
 task registries), not from their READMEs.
 
-**Rough breadth vs depth.** Broad frameworks give you tools to train many things yourself; narrow repositories give
+### Skill matrix: what each policy can do
+
+Read this first. Rows go from the **most skills** (a general tracker or a planner with dozens of behaviours) to the
+**basics only** (just walking). Cells say what we saw in the arena, not what a README claims.
+
+Legend: ✅ works in the arena · ⚠ works with clear limits · ❌ tested and fails · ○ shipped by the repository but not
+tested by us · — not offered.
+
+| policy | walk | rough ground | stairs | crouch / squat | kneel, crawl, lie | dance | kick, punch, karate | jump | sit, pick up, carry | any motion from a clip |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **SONIC** (GR00T) | ✅ | ✅ | ❌ | ✅ (0.57 m) | ○ | ✅ (tracks dance clips) | ✅ kick clips · ○ boxing, punches, hooks | ○ forward jump | ○ carry object | ✅ best tracker |
+| **GMT** | ✅ (drifts) | — | — | ✅ squat clip | — | ✅ | ✅ kick clips | — | — | ✅ (best joint error on 5 of 11 clips) |
+| **TWIST** | ✅ (drifts) | — | — | ✅ squat clip | — | ⚠ (falls on Gangnam Style) | ✅ kick clips | — | — | ⚠ weakest tracker |
+| **GRAIL** (SONIC fine-tune) | ✅ | — | ○ its purpose, not measurable here | ❌ falls on squat | — | ❌ falls on dances | ⚠ | — | ○ sitting, pick-up, curbs, slopes | ⚠ walking clips only |
+| **unitree_rl_lab** | ✅ | ❌ | ❌ | — | — | ✅ 2 dances (own clips) | — | — | — | — |
+| **holosoma** | ✅ (2 policies) | ✅ | ❌ | — | — | ○ 2 G1 dance trackers (not in the arena yet) | — | — | — | — |
+| **BFM-Zero** | ○ | — | — | ○ | — | ○ | ○ | ○ | ○ | ○ prompts (downloaded, not adapted) |
+| **GR00T WBC** (Walk/Balance) | ✅ | ❌ | ❌ | ✅ (0.50 m, lowest) | — | — | — | — | — | — |
+| **WBC-AGILE** | ✅ (best velocity tracking) | ✅ | ❌ | ⚠ (0.62 m) | — | — | — | — | — | — |
+| **G1DWAQ_Lab** | ✅ | ❌ | ✅ **22 cm** (best) | — | — | — | — | — | — | — |
+| **Safe100Humanoid** | ❌ | ❌ | ❌ in the arena (16/16 in its own simulator) | — | — | — | — | — | — | — |
+| **unitree_rl_gym** | ⚠ (weak turning) | ❌ | ❌ | — | — | — | — | — | — | — |
+| **mujoco_playground** | ⚠ average | ❌ | ❌ | — | — | — | — | — | — | — |
+| **g1_walk_isaaclab_mujoco** | ❌ (made for an older G1) | ❌ | ❌ | — | — | — | — | — | — | — |
+| **g1_body** (ours) | ✅ | ❌ | ✅ **20 cm** | ✅ (0.52 m) | — | — | — | — | — | — |
+
+How to read it:
+
+- **SONIC is the only source with a wide list of behaviours in one model.** Its planner has 27 modes: idle, slow walk,
+  walk, run, squat, two kneeling poses, lying, crawl, elbow crawl, boxing (idle, walk, punches, hooks), forward jump,
+  several styled walks (stealth, injured, ledge, zombie, gun, scare, happy dance), and object carry. In the arena we
+  measured walking, crouching, pushes, rough ground and its tracking of dance and kick clips; the other modes are
+  shipped but we did not test them.
+- **GMT, TWIST and GRAIL are trackers.** They do not have named skills: they copy whatever reference clip you give them,
+  so dance, kick and squat all work if a clip exists. Their quality is the "tracking" table, not a skill list.
+- **Everything below the trackers is a specialist.** unitree_rl_lab, holosoma, WBC-AGILE, GR00T WBC, unitree_rl_gym
+  and mujoco_playground walk (with different quality); G1DWAQ and Safe100 climb stairs; unitree_rl_lab adds two dances
+  and GR00T WBC and AGILE add crouching. Nobody outside SONIC ships jumping, punching or crawling as a ready policy.
+- **Only two policies climb stairs in the arena** (G1DWAQ and our `g1_body`), and neither has any dance or kick.
+  That gap is what `g1_body` is meant to close by distilling more teachers.
+
+**Breadth vs depth in numbers.** Broad frameworks give you tools to train many things yourself; narrow repositories give
 you one trained policy. Only the second kind can be benchmarked as-is.
 
 | repository | headline breadth | pre-trained G1 policies actually shipped | tested in the arena |
