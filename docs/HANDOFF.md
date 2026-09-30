@@ -50,6 +50,42 @@ the G1 29-DoF **with Dex3 hands**, as many repos combined as possible, and a pat
 - Pushes: G1DWAQ, SONIC and g1_body survive 1000 N. g1_walk37_* fall on flat; they need their own robot model.
 - Tracking: SONIC best overall and the only one that holds heading on long clips (GMT drifts 3 m on a 38 s walk).
 
+## Session state (2026-09-30) - read this first
+**Doing:** benchmark every pretrained G1 policy in one MuJoCo arena, report who is best (esp. stairs), and distil the best
+into `g1_body` (Isaac Lab). User writes Portuguese; commit as MHC-CodeSmith, push after every step; Isaac/GPU jobs on ONE
+GPU only (`-e NVIDIA_VISIBLE_DEVICES=1`); stay idle while a training job runs.
+**Done:** arena with 18 policies + 3 stair protocols + 11 tracking clips; `docs/ARENA_REPORT.md` (built by
+`tools/build_report.py` from `tools/arena_report_template.md` + `output/*.json`, copies in `docs/data/`); 49+ GIFs
+(`tools/make_media.py`); charts (`tools/report_figures.py`); g1_body released (iteration 700); GRAIL ported.
+**In progress (next action):** add a "Capabilities per repository" section to `tools/arena_report_template.md` (what
+each repo ships pre-trained vs what we tested; user wants the "thousand things vs basic" contrast), then
+`docker run --rm -v $PWD:/workspace/g1_stairs g1-arena tools/build_report.py`, commit, push.
+Facts already gathered for it (from the local clones):
+- unitree_rl_gym: 3 checkpoints (`deploy/pre_train/{g1,h1,h1_2}/motion.pt`), tasks go2/h1/h1_2/g1; G1 = 12 leg joints.
+- unitree_rl_lab: 3 G1 ONNX (velocity v0, dance_102, gangnam_style) + tasks Go2/H1/G1 velocity, 2 G1 mimic.
+- mujoco_playground: no checkpoints; ~49 locomotion envs (G1 flat/rough joystick, T1, H1, Go1, Spot, Barkour, Apollo,
+  OP3, Berkeley humanoid) + manipulation (Panda, Aloha, LEAP, Aero hand); you train them yourself.
+- holosoma: G1 29-DoF loco fastsac+ppo (used), T1 loco fastsac+ppo, **G1 whole-body-tracking dancing fastsac+ppo ONNX
+  (`models/wbt/*_g1_29dof_dancing.onnx`) NOT yet in the arena** (candidate to add).
+- humanoid-bench: 27 tasks (12 locomotion), only 2 pretrained `.pt` (reach) - it is a benchmark, H1-focused.
+- GMT 1 checkpoint (23 DoF) + 8 example motions; TWIST 1 checkpoint (23+wrist); g1_walk 2 policies (baseline/robust,
+  older 37-joint G1); Safe100 2 (cbf/nominal); GRAIL 3 releases (`pnp_table`, `pnp_ground`, `terrain`) + dataset of
+  1000 clips per category (stairs p1/p2, curb, slope, sitting, pickup_ground, pickup_table); BFM-Zero 1 model with
+  reward/goal/tracking prompts (CC-BY-NC); SONIC: planner with 27 modes + encoder/decoder, GEAR-SONIC weights on HF.
+- Still to gather: WBC-AGILE task list (only Velocity-Height-G1-History imported; see scratchpad `agile_tree.txt` idea:
+  `gh api` the repo tree), menagerie robot count, GR00T-WBC extras, G1DWAQ tasks.
+**Open:** GRAIL stairs need its Isaac Lab scene (arena result "not measured"); next g1_body run (keep DWAQ imitation
+weight high longer, rough-terrain teacher); L1/LATENT student; add holosoma dancing tracker; cloud GR00T N1.7 fine-tune.
+**Measured, expensive to redo:** stairs: only G1DWAQ (22 cm) and g1_body (20 cm, HumanoidBench return 622 vs 594) climb;
+Safe100 climbs 16/16 in MuJoCo-Warp but falls in <1 s on CPU MuJoCo even with its own compiled model (needs
+`PYTORCH_JIT=0` in docker/Dockerfile.mjlab); GRAIL flat clips 0.060 rad walk_stand, falls on 4/11; SONIC best tracker
+(heading 11/11, root 7/11, no falls); all trackers fall on stairs rebuilt from GRAIL footfalls (`docs/data/grail_stairs_attempt.json`).
+**Environment:** disk ~38 GB free of 1.9 TB (98%); I cleared old docker images (swebench, spot-teleop, >1 month) - kept
+`spot-teleop-spot-ros2` (container holds a ROS bag in `/tf`), graspgen and isaac_ros images (not rebuildable),
+`~/.cache/uv` (locked by a running training; `uv cache prune` later). Docker images: `g1-arena` (CPU arena),
+`g1-mjlab` (Safe100, GPU), `g1-isaaclab` (training). Run everything with `docker run --rm -v $PWD:/workspace/g1_stairs ...`;
+docker-created files are root-owned (remove via `docker run ... --entrypoint rm`).
+
 ## Arena report (2026-09-29)
 - `docs/ARENA_REPORT.md` (built by `tools/build_report.py` from `output/*.json`; GIFs by `tools/make_media.py`, charts by
   `tools/report_figures.py`). New: Safe100 (`arena/safe100.py`, checked in its own mjlab env with
