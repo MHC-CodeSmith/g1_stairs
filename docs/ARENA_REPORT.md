@@ -10,6 +10,7 @@ result files; GIFs in `docs/media/` and charts in `docs/figures/` are regenerate
 - [Locomotion](#locomotion)
 - [Motion tracking](#motion-tracking)
 - [Our combined controller (g1_body)](#our-combined-controller-g1_body)
+- [What each repository ships](#what-each-repository-ships)
 - [Repository by repository](#repository-by-repository)
 - [What could not be run, and why](#what-could-not-be-run-and-why)
 - [Reproduce](#reproduce)
@@ -319,6 +320,47 @@ arena. So the released checkpoint is iteration 700, not the last one:
 
 **Next change:** keep the stair teacher's imitation weight high for longer. The student also inherits its teachers'
 weakness on rough ground (it falls at 15 s); holosoma and AGILE, which finish that test, are the candidate teachers.
+
+## What each repository ships
+
+Some repositories advertise a lot (dozens of tasks, thousands of clips); others ship one policy. What matters for a
+G1 is what comes **pre-trained and ready to run**. Counts below are from the repositories themselves (files present,
+task registries), not from their READMEs.
+
+**Rough breadth vs depth.** Broad frameworks give you tools to train many things yourself; narrow repositories give
+you one trained policy. Only the second kind can be benchmarked as-is.
+
+| repository | headline breadth | pre-trained G1 policies actually shipped | tested in the arena |
+|---|---|---|---|
+| [mujoco_playground](https://github.com/google-deepmind/mujoco_playground) | ~49 locomotion environments (G1, T1, H1, Go1, Spot, Barkour, Apollo, OP3, Berkeley humanoid) plus manipulation (Panda, Aloha, LEAP, Aero hand) | **0**: you train every environment yourself; our G1 policy is the ONNX from its Colab-style export | G1 joystick policy (average; falls on rough ground) |
+| [HumanoidBench](https://github.com/carlosferrazza/humanoid-bench) | 27 whole-body tasks (12 locomotion, 15 manipulation) | **0 for the G1** (2 `.pt` files, both for a reach task); baselines are trained for the H1 | its stair course and reward as a test, not its policies |
+| [mujoco_menagerie](https://github.com/google-deepmind/mujoco_menagerie) | about 70 robot models | not applicable (models only) | the G1 models |
+| [holosoma](https://github.com/amazon-far/holosoma) | G1 and T1, PPO and FastSAC, IsaacGym / IsaacSim / MJWarp, retargeting, whole-body tracking | **6 ONNX**: G1 walking (2), T1 walking (2), **G1 dance tracking (2)** | G1 walking (2); the dance trackers are not in the arena yet |
+| [unitree_rl_lab](https://github.com/unitreerobotics/unitree_rl_lab) | tasks for Go2, H1 and G1 in Isaac Lab | **3 G1**: velocity, 2 dances | all three |
+| [unitree_rl_gym](https://github.com/unitreerobotics/unitree_rl_gym) | Go2, H1, H1_2, G1 | **1 G1** (12 leg joints; also H1 and H1_2) | the G1 policy |
+| [WBC-AGILE](https://github.com/nvidia-isaac/WBC-AGILE) | G1 and T1 velocity, velocity + height, pick and place | we imported the G1 velocity + height policy; the other tasks' checkpoints were not checked | velocity + height |
+| [GR00T-WholeBodyControl](https://github.com/NVlabs/GR00T-WholeBodyControl) | SONIC: one tracker, one planner with 27 locomotion modes (walk, run, crouch, crawl, boxing, jump, styled walks); decoupled WBC (walk + balance); teleoperation and deployment stack | **SONIC** (encoder, decoder, planner) **and WBC** (2 networks) | both; SONIC in planner and tracking mode |
+| [GMT](https://github.com/zixuan417/humanoid-general-motion-tracking) | "general motion tracker" | **1** (23 joints, no hands) with 8 example clips | yes, on 11 clips |
+| [TWIST](https://github.com/YanjieZe/TWIST) | whole-body teleoperation system with its dataset and training code | **1** general tracker | yes |
+| [g1_walk_isaaclab_mujoco](https://github.com/yezzzzye/g1_walk_isaaclab_mujoco) | teaching project: train, fine-tune, export | **2** (baseline and robust), for an older 37-joint G1 | both (fall on our G1) |
+| [Safe100Humanoid](https://github.com/lzqw/Safe100Humanoid) | one task: stairs with CBF-RL | **2** (CBF-trained and nominal) | both |
+| [GRAIL](https://github.com/NVlabs/GRAIL) | data pipeline for stairs, curbs, slopes, sitting and pick-up; dataset with about 1000 clips per category | **3 tracking checkpoints** (`pnp_table`, `pnp_ground`, `terrain`) plus warm starts | `terrain` on flat clips; stairs not measurable |
+| [G1DWAQ_Lab](https://github.com/liuyufei-nubot/G1DWAQ_Lab) | Isaac Lab tasks for G1 and H1, flat, rough, walk, run | **1** G1 stair policy (`g1_dwaq`) | yes; the best stair climber |
+| [BFM-Zero](https://github.com/LeCAR-Lab/BFM-Zero) | one "promptable" model: reward, goal and motion-tracking prompts | **1** model (CC-BY-NC), many behaviours from prompts | downloaded, not yet adapted |
+
+**What the numbers say.**
+
+- **Most policies, least depth.** GR00T-WholeBodyControl (SONIC's 27 planner modes inside one model) and holosoma (6 ONNX
+  across two robots and two tasks) are the richest sources of ready policies. In the arena SONIC also gave the best
+  tracking and most robust pushing; holosoma was the only non-NVIDIA source that finished rough ground.
+- **Most environments, no policies.** mujoco_playground and HumanoidBench advertise the largest catalogues (49 and 27
+  tasks), but ship nothing to run on a G1: value comes from training on them, not from checkpoints.
+- **One policy, done well.** G1DWAQ and Safe100 are single-purpose stair climbers. G1DWAQ is the only one that
+  transfers to our simulator; Safe100 only works in the simulator it was trained in.
+- **"A thousand" is usually data.** GRAIL's ~1000 clips per category and the retargeting datasets of GMT and TWIST are
+  training data, not trained skills; GRAIL turns them into 3 checkpoints.
+- **Untapped in our benchmark:** holosoma's G1 dance trackers and T1 walkers, the unitree_rl_gym and unitree_rl_lab
+  H1 policies (other robots), BFM-Zero's prompt-driven behaviours, and the non-velocity WBC-AGILE tasks.
 
 ## Repository by repository
 

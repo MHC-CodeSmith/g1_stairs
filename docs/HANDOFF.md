@@ -57,10 +57,7 @@ GPU only (`-e NVIDIA_VISIBLE_DEVICES=1`); stay idle while a training job runs.
 **Done:** arena with 18 policies + 3 stair protocols + 11 tracking clips; `docs/ARENA_REPORT.md` (built by
 `tools/build_report.py` from `tools/arena_report_template.md` + `output/*.json`, copies in `docs/data/`); 49+ GIFs
 (`tools/make_media.py`); charts (`tools/report_figures.py`); g1_body released (iteration 700); GRAIL ported.
-**In progress (next action):** add a "Capabilities per repository" section to `tools/arena_report_template.md` (what
-each repo ships pre-trained vs what we tested; user wants the "thousand things vs basic" contrast), then
-`docker run --rm -v $PWD:/workspace/g1_stairs g1-arena tools/build_report.py`, commit, push.
-Facts already gathered for it (from the local clones):
+**Done:** "What each repository ships" section (capabilities vs pre-trained policies) is in the report. Facts behind it:
 - unitree_rl_gym: 3 checkpoints (`deploy/pre_train/{g1,h1,h1_2}/motion.pt`), tasks go2/h1/h1_2/g1; G1 = 12 leg joints.
 - unitree_rl_lab: 3 G1 ONNX (velocity v0, dance_102, gangnam_style) + tasks Go2/H1/G1 velocity, 2 G1 mimic.
 - mujoco_playground: no checkpoints; ~49 locomotion envs (G1 flat/rough joystick, T1, H1, Go1, Spot, Barkour, Apollo,
@@ -72,8 +69,8 @@ Facts already gathered for it (from the local clones):
   older 37-joint G1); Safe100 2 (cbf/nominal); GRAIL 3 releases (`pnp_table`, `pnp_ground`, `terrain`) + dataset of
   1000 clips per category (stairs p1/p2, curb, slope, sitting, pickup_ground, pickup_table); BFM-Zero 1 model with
   reward/goal/tracking prompts (CC-BY-NC); SONIC: planner with 27 modes + encoder/decoder, GEAR-SONIC weights on HF.
-- Still to gather: WBC-AGILE task list (only Velocity-Height-G1-History imported; see scratchpad `agile_tree.txt` idea:
-  `gh api` the repo tree), menagerie robot count, GR00T-WBC extras, G1DWAQ tasks.
+- AGILE repo tasks: G1 velocity, velocity+history, velocity+height, T1 velocity, G1 pick-and-place (checkpoints for the
+  others not verified); menagerie ~70 models; G1DWAQ tasks walk/run/g1_flat/g1_rough/g1_dwaq/h1.
 **Open:** GRAIL stairs need its Isaac Lab scene (arena result "not measured"); next g1_body run (keep DWAQ imitation
 weight high longer, rough-terrain teacher); L1/LATENT student; add holosoma dancing tracker; cloud GR00T N1.7 fine-tune.
 **Measured, expensive to redo:** stairs: only G1DWAQ (22 cm) and g1_body (20 cm, HumanoidBench return 622 vs 594) climb;
