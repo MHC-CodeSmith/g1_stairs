@@ -77,3 +77,16 @@ for c in sorted({r["test"] for r in tr}):
         print(f"| {c} ({r['seconds']} s) | {who} | {f(r['joint_err'])} | {f(r['root_xy_err'], 2)} "
               f"({f(r['root_xy_err_final'], 2)}) | {f(r['yaw_err'], 2)} ({f(r['yaw_err_final'], 2)}) | "
               f"{'fell %.1f s' % r['fall_t'] if r['fell'] else ''} |")
+
+ga = os.path.join(REPO, "output/grail_stairs_attempt.json")
+if not os.path.exists(ga):
+    ga = os.path.join(REPO, "docs/data/grail_stairs_attempt.json")
+if os.path.exists(ga):
+    G = [r for r in json.load(open(ga)) if "error" not in r]
+    print("\n### GRAIL stair attempt\n")
+    print("| clip | " + " | ".join(sorted({r["policy"] for r in G})) + " |")
+    print("|---|" + "---|" * len({r["policy"] for r in G}))
+    for c in sorted({r["clip"] for r in G}):
+        row = {r["policy"]: r for r in G if r["clip"] == c}
+        print(f"| {c} | " + " | ".join(f"fell at {row[p]['fall_t']:.1f} s" if p in row and row[p]["fell"] else
+                                        ("stayed up" if p in row else "-") for p in sorted(row)) + " |")

@@ -32,35 +32,46 @@ Clips re-anchored to start at the robot. Joint error over the 23 joints all trac
 | gmt_airkick_stand (4.6 s) | sonic_tracking | 0.110 | 0.22 (0.36) | 0.04 (0.01) |  |
 | gmt_airkick_stand (4.6 s) | gmt | 0.093 | 0.20 (0.34) | 0.24 (0.13) |  |
 | gmt_airkick_stand (4.6 s) | twist | 0.105 | 0.38 (0.83) | 0.82 (1.24) |  |
+| gmt_airkick_stand (4.6 s) | grail_terrain | 0.110 | 0.59 (1.37) | 0.08 (0.04) |  |
 | gmt_basic_walk (37.1 s) | sonic_tracking | 0.082 | 0.22 (0.20) | 0.04 (0.05) |  |
 | gmt_basic_walk (37.1 s) | gmt | 0.075 | 1.45 (3.06) | 0.64 (2.18) |  |
 | gmt_basic_walk (37.1 s) | twist | 0.082 | 2.68 (3.36) | 1.67 (2.88) |  |
+| gmt_basic_walk (37.1 s) | grail_terrain | 0.068 | 0.19 (0.26) | 0.05 (0.00) |  |
 | gmt_crouchwalk_stand (5.5 s) | sonic_tracking | 0.141 | 0.26 (0.39) | 0.04 (0.05) |  |
 | gmt_crouchwalk_stand (5.5 s) | gmt | 0.123 | 0.54 (0.29) | 0.16 (0.10) |  |
 | gmt_crouchwalk_stand (5.5 s) | twist | 0.124 | 0.53 (0.31) | 0.10 (0.07) |  |
+| gmt_crouchwalk_stand (5.5 s) | grail_terrain | 0.124 | 2.10 (2.64) | 0.07 (0.13) |  |
 | gmt_dance (21.0 s) | sonic_tracking | 0.080 | 0.09 (0.32) | 0.03 (0.01) |  |
 | gmt_dance (21.0 s) | gmt | 0.092 | 0.12 (0.61) | 0.27 (0.71) |  |
 | gmt_dance (21.0 s) | twist | 0.128 | 0.54 (1.77) | 0.27 (0.83) |  |
+| gmt_dance (21.0 s) | grail_terrain | 0.141 | 1.33 (5.88) | 0.07 (0.20) | X 20.7 |
 | gmt_dance_waltz (6.1 s) | sonic_tracking | 0.069 | 0.16 (0.21) | 0.02 (0.02) |  |
 | gmt_dance_waltz (6.1 s) | gmt | 0.067 | 0.26 (0.94) | 0.14 (0.09) |  |
 | gmt_dance_waltz (6.1 s) | twist | 0.073 | 0.24 (0.40) | 0.28 (0.18) |  |
+| gmt_dance_waltz (6.1 s) | grail_terrain | 0.110 | 0.45 (1.39) | 0.05 (0.04) |  |
 | gmt_kick_walk (7.7 s) | sonic_tracking | 0.109 | 0.10 (0.14) | 0.03 (0.02) |  |
 | gmt_kick_walk (7.7 s) | gmt | 0.090 | 0.48 (0.59) | 0.41 (0.70) |  |
 | gmt_kick_walk (7.7 s) | twist | 0.105 | 0.22 (0.38) | 0.21 (0.36) |  |
+| gmt_kick_walk (7.7 s) | grail_terrain | 0.117 | 1.00 (3.53) | 0.07 (0.03) |  |
 | gmt_squat (3.0 s) | sonic_tracking | 0.112 | 0.03 (0.04) | 0.02 (0.02) |  |
 | gmt_squat (3.0 s) | gmt | 0.093 | 0.05 (0.15) | 0.02 (0.02) |  |
 | gmt_squat (3.0 s) | twist | 0.115 | 0.03 (0.03) | 0.04 (0.07) |  |
+| gmt_squat (3.0 s) | grail_terrain | 0.218 | 0.18 (0.70) | 0.11 (0.20) | X 2.5 |
 | gmt_walk_stand (5.4 s) | sonic_tracking | 0.074 | 0.17 (0.40) | 0.02 (0.02) |  |
 | gmt_walk_stand (5.4 s) | gmt | 0.070 | 0.22 (0.49) | 0.09 (0.14) |  |
 | gmt_walk_stand (5.4 s) | twist | 0.081 | 0.63 (1.12) | 0.34 (0.13) |  |
+| gmt_walk_stand (5.4 s) | grail_terrain | 0.060 | 0.07 (0.13) | 0.03 (0.01) |  |
 | sonic_walk (38.0 s) | sonic_tracking | 0.058 | 0.05 (0.12) | 0.02 (0.01) |  |
 | sonic_walk (38.0 s) | gmt | 0.088 | 3.17 (14.13) | 1.06 (2.27) |  |
 | sonic_walk (38.0 s) | twist | 0.080 | 1.34 (0.60) | 0.30 (0.46) |  |
+| sonic_walk (38.0 s) | grail_terrain | 0.066 | 0.44 (0.09) | 0.04 (0.03) |  |
 | unitree_dance_102 (19.2 s) | sonic_tracking | 0.113 | 0.13 (0.22) | 0.05 (0.01) |  |
 | unitree_dance_102 (19.2 s) | gmt | 0.127 | 4.26 (8.88) | 0.28 (0.08) |  |
 | unitree_dance_102 (19.2 s) | twist | 0.141 | 1.46 (4.71) | 0.41 (0.58) |  |
+| unitree_dance_102 (19.2 s) | grail_terrain | 0.173 | 4.26 (10.56) | 0.07 (0.63) | X 16.3 |
 | unitree_dance_102 (21.1 s) | unitree_dance_102 | 0.080 | 0.11 (0.07) | 0.05 (0.07) |  |
 | unitree_gangnam_style (18.3 s) | sonic_tracking | 0.143 | 0.44 (0.91) | 0.05 (0.10) |  |
 | unitree_gangnam_style (18.3 s) | gmt | 0.176 | 1.18 (4.64) | 0.19 (0.57) | X 4.3 |
 | unitree_gangnam_style (18.3 s) | twist | 0.218 | 1.32 (4.84) | 0.51 (0.00) | X 4.7 |
+| unitree_gangnam_style (18.3 s) | grail_terrain | 0.194 | 0.46 (1.64) | 0.08 (0.32) | X 2.1 |
 | unitree_gangnam_style (20.2 s) | unitree_gangnam_style | 0.081 | 0.26 (0.36) | 0.05 (0.00) |  |

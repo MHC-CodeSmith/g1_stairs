@@ -57,8 +57,12 @@ the G1 29-DoF **with Dex3 hands**, as many repos combined as possible, and a pat
   HumanoidBench stair course + step sweep + Safe100 staircase (`arena/stairs_bench.py`).
 - Stairs: only G1DWAQ (up to 22 cm) and g1_body (up to 20 cm, best HumanoidBench return 622) climb. Safe100 works only
   on MuJoCo-Warp (falls on CPU MuJoCo even with its own compiled model).
-- GRAIL (NVlabs): terrain tracker = SONIC fine-tune + 11x11 height map + object obs; config in third_party/hf/GRAIL;
-  port not done. Disk on this machine is ~full (5 GB free): the GRAIL clone (4.9 GB) was deleted.
+- GRAIL (NVlabs): ported as `arena/grail.py` (`grail_terrain` in TRACKERS; weights via tools/fetch_third_party.sh).
+  Flat clips: fine (0.060 rad walk_stand) but falls on the 4 most dynamic clips. Stairs NOT measured: released USD
+  meshes are normalised (~1.2x1.25x2.0 m, tools/extract_grail_mesh.py) and cannot be placed to match the reference; a
+  height field rebuilt from the reference's footfalls (`terrain_from_reference`) makes SONIC/GMT/TWIST fall too
+  (`tools/grail_stairs_attempt.py`, docs/data). Next: GRAIL's own Isaac Lab scene. Disk on this machine is nearly full
+  (~40 GB free after docker cleanup); the GRAIL clone (4.9 GB) was deleted, source files copied to third_party/GRAIL_src.
 
 ## Open (in order)
 1. **Next g1_body run**: keep the DWAQ imitation weight high longer (the stairs fade after ~700 it); add rough-terrain

@@ -137,8 +137,9 @@ def track_figs():
     if not res:
         return
     clips = sorted({r["test"] for r in res})
-    trackers = ["sonic_tracking", "gmt", "twist", "own"]
-    colors = {"sonic_tracking": "#2e86ab", "gmt": "#f18f01", "twist": "#6a4c93", "own": "#6aaa64"}
+    trackers = ["sonic_tracking", "gmt", "twist", "grail_terrain", "own"]
+    colors = {"sonic_tracking": "#2e86ab", "gmt": "#f18f01", "twist": "#6a4c93", "grail_terrain": "#d1495b",
+              "own": "#6aaa64"}
     by = {(r["policy"], r["test"]): r for r in res}
     for c in clips:                          # unitree_rl_lab's dance policies track only their own clip
         if (c, c) in by:
@@ -146,19 +147,19 @@ def track_figs():
     for key, title, fname, unit in (("joint_err", "Motion tracking: mean joint error", "track_joint.png", "rad"),
                                     ("root_xy_err", "Motion tracking: mean root position error", "track_root.png", "m"),
                                     ("yaw_err", "Motion tracking: mean heading error", "track_yaw.png", "rad")):
-        fig, ax = plt.subplots(figsize=(7.5, 0.6 * len(clips) + 1.2))
+        fig, ax = plt.subplots(figsize=(7.5, 0.7 * len(clips) + 1.2))
         y = np.arange(len(clips))
         for k, t in enumerate(trackers):
             vals = [by.get((t, c), {}).get(key, np.nan) for c in clips]
             fell = [by.get((t, c), {}).get("fell", False) for c in clips]
-            ax.barh(y + (k - 1.5) * 0.2, vals, height=0.2, color=colors[t],
+            ax.barh(y + (k - 2) * 0.16, vals, height=0.16, color=colors[t],
                     label="clip's own policy (unitree_rl_lab)" if t == "own" else t,
                     hatch=None, edgecolor=["black" if f else colors[t] for f in fell])
         ax.set_yticks(y, clips)
         ax.invert_yaxis()
         if key == "root_xy_err":
             ax.set_xscale("log")
-        ax.legend(frameon=False, fontsize=8, loc="lower right")
+        ax.legend(frameon=False, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.08 - 0.02 * (unit == "m")), ncol=3)
         style(ax, title + " (black edge = fell)", unit)
         save(fig, fname)
 

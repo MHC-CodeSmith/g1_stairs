@@ -1,0 +1,110 @@
+[
+ {
+  "policy": "grail_terrain",
+  "clip": "down_12steps",
+  "fell": true,
+  "fall_t": 1.8600000000000014,
+  "joint_err": 0.1292962360612946,
+  "root_xy_err": 0.15714550597343827,
+  "yaw_err": 0.05919814276245586
+ },
+ {
+  "policy": "sonic_tracking",
+  "clip": "down_12steps",
+  "fell": true,
+  "fall_t": 3.1799999999998714,
+  "joint_err": 0.1584766155512135,
+  "root_xy_err": 0.07844191070001083,
+  "yaw_err": 0.09261439666272916
+ },
+ {
+  "policy": "gmt",
+  "clip": "down_12steps",
+  "fell": true,
+  "fall_t": 1.5400000000000011,
+  "joint_err": 0.47321906951467835,
+  "root_xy_err": 0.27226571944137185,
+  "yaw_err": 0.17014982168207773
+ },
+ {
+  "policy": "twist",
+  "clip": "down_12steps",
+  "fell": true,
+  "fall_t": 1.420000000000001,
+  "joint_err": 0.24696259433496653,
+  "root_xy_err": 0.25424549806945773,
+  "yaw_err": 0.27094960425574854
+ },
+ {
+  "policy": "grail_terrain",
+  "clip": "up_down_12steps",
+  "fell": true,
+  "fall_t": 4.139999999999766,
+  "joint_err": 0.13935409607735685,
+  "root_xy_err": 0.2329400277209737,
+  "yaw_err": 0.06734089432584577
+ },
+ {
+  "policy": "sonic_tracking",
+  "clip": "up_down_12steps",
+  "fell": true,
+  "fall_t": 2.0999999999999903,
+  "joint_err": 0.13691926803975182,
+  "root_xy_err": 0.18686399610502946,
+  "yaw_err": 0.13160325097861442
+ },
+ {
+  "policy": "gmt",
+  "clip": "up_down_12steps",
+  "fell": true,
+  "fall_t": 1.440000000000001,
+  "joint_err": 0.0989521489862396,
+  "root_xy_err": 0.10645311042221894,
+  "yaw_err": 0.26611024223930946
+ },
+ {
+  "policy": "twist",
+  "clip": "up_down_12steps",
+  "fell": true,
+  "fall_t": 1.7200000000000013,
+  "joint_err": 0.11900869230380239,
+  "root_xy_err": 0.08194188497708402,
+  "yaw_err": 0.3341490942612762
+ },
+ {
+  "policy": "grail_terrain",
+  "clip": "down_14steps",
+  "fell": true,
+  "fall_t": 1.7400000000000013,
+  "joint_err": 0.1029324205502624,
+  "root_xy_err": 0.10691580471377149,
+  "yaw_err": 0.03357809087252477
+ },
+ {
+  "policy": "sonic_tracking",
+  "clip": "down_14steps",
+  "fell": true,
+  "fall_t": 3.0599999999998846,
+  "joint_err": 0.20131162449195747,
+  "root_xy_err": 0.09284391628505664,
+  "yaw_err": 0.15093780756023292
+ },
+ {
+  "policy": "gmt",
+  "clip": "down_14steps",
+  "fell": true,
+  "fall_t": 1.300000000000001,
+  "joint_err": 0.5566501180747798,
+  "root_xy_err": 0.32010569650195836,
+  "yaw_err": 0.13642129517717108
+ },
+ {
+  "policy": "twist",
+  "clip": "down_14steps",
+  "fell": true,
+  "fall_t": 0.8600000000000007,
+  "joint_err": 0.24236254685729594,
+  "root_xy_err": 0.2324823237229624,
+  "yaw_err": 0.16471472628891123
+ }
+]

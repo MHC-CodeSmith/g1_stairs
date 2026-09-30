@@ -127,6 +127,14 @@ def add_terrain(spec: mujoco.MjSpec, kind: str, seed: int = 0):
                     material="step", friction=fr)
         for i in range(10):
             box(top_x + 1.2 + run * (i + 0.5), rise * (10 - i))
+    elif kind.startswith("hfield:"):           # npz: h (ny, nx) heights [m], cx (2,), ext, res
+        z = np.load(kind[len("hfield:"):])
+        h = z["h"]
+        top = max(float(h.max()), 0.05)
+        spec.add_hfield(name="ref", size=[float(z["ext"]) / 2, float(z["ext"]) / 2, top, 0.05], nrow=h.shape[0],
+                        ncol=h.shape[1], userdata=(h / top).flatten().tolist())
+        wb.add_geom(name="refhf", type=mujoco.mjtGeom.mjGEOM_HFIELD, hfieldname="ref",
+                    pos=[float(z["cx"][0]), float(z["cx"][1]), 0.0], material="step", friction=fr)
     elif kind == "hb_stairs":  # HumanoidBench stair task (assets/locomotion/generated_xml_stairs.xml), robot at x=0
         for cx in (3.2, 9.2, 15.2, 21.2):              # 4 pyramids: 5 layers of 0.18 m, 0.6 m treads, up then down
             for k, half in enumerate((2.7, 2.1, 1.5, 0.9, 0.3)):

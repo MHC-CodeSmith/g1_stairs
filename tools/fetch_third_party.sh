@@ -12,9 +12,11 @@ for name, r in m["repos"].items():
     for pat in r.get("lfs", []):
         print(f'git -C {name} lfs pull --include="{pat}"')
 for repo, h in m["huggingface"].items():
+    base = ("datasets/" if h.get("dataset") else "") + repo
     for f in h["files"]:
-        dst = f'hf/{repo.split("/")[1]}/{f}'
-        print(f'[ -s "{dst}" ] || (mkdir -p "$(dirname "{dst}")" && curl -sfL -o "{dst}" https://huggingface.co/{repo}/resolve/main/{f})')
+        src, rel = (f["src"], f["dst"]) if isinstance(f, dict) else (f, f)
+        dst = f'hf/{h.get("dir", repo.split("/")[1])}/{rel}'
+        print(f'[ -s "{dst}" ] || (mkdir -p "$(dirname "{dst}")" && curl -sfL -o "{dst}" https://huggingface.co/{base}/resolve/main/{src})')
 PY
 bash -e /tmp/g1_fetch_plan.sh
 echo "third_party ready"

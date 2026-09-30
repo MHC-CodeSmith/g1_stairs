@@ -45,6 +45,8 @@ def track(policy_name, clip: Clip | None, video=None, terrain="flat", verbose=Fa
     else:
         pol = make_tracker(policy_name, clip)
     arena = Arena(terrain, render=video is not None)
+    if hasattr(pol, "bind"):
+        pol.bind(arena)
     # reference sampled at 50 Hz
     T = int((clip.seconds - lookahead) * 50)          # stop before the trackers' look-ahead runs off the clip
     t = np.arange(T) / 50.0

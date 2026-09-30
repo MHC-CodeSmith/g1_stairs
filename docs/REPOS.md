@@ -124,7 +124,10 @@ Resultados completos, GIFs e gráficos em [`docs/ARENA_REPORT.md`](ARENA_REPORT.
 - **unitree_rl_lab** (Unitree, Apache-2.0, tem Docker): política de andar 29-DoF (anda bem, não sobe escada) e duas
   danças (rastreiam o próprio clipe com 0,08 rad de erro).
 - **HumanoidBench**: o percurso de escada e a recompensa dele viraram um teste da arena (as políticas dele são para o H1).
-- **GRAIL** (NVIDIA): rastreador de escada derivado do SONIC com mapa de altura; inspecionado, ainda não rodado.
+- **GRAIL** (NVIDIA): rastreador derivado do SONIC (tokens + mapa de altura 11×11). Rede reconstruída e testada nos 11
+  clipes planos: anda muito bem (0,060 rad), mas cai em 4 dos 11 clipes mais dinâmicos. No resultado de escada não foi
+  possível medir: as malhas de escada liberadas não podem ser posicionadas aqui; com o terreno reconstruído a partir dos
+  passos da referência, todos os rastreadores caem no primeiro degrau. Detalhes no relatório da arena.
 - **unitree_mujoco, unitree_sim_isaaclab, RLinf, Unitree-G1-Humanoid-Robot-Tasks**: não têm política de G1 para testar
   (simulador, cenas de teleoperação, infraestrutura de RL, coleção de tarefas).
 

@@ -33,8 +33,9 @@ IDX23 = [MJ29.index(n) for n in J23]
 
 
 class Clip:
-    def __init__(self, fps, root_pos, root_rot_xyzw, dof29, name="clip"):
+    def __init__(self, fps, root_pos, root_rot_xyzw, dof29, name="clip", obj=None):
         self.fps, self.name = float(fps), name
+        self.obj = obj                           # static scene object: dict(pos (3,), quat wxyz (4,)) in the clip frame
         self.root_pos = np.asarray(root_pos, float)
         self.root_rot = np.asarray(root_rot_xyzw, float)
         self.dof = np.asarray(dof29, float)
@@ -66,7 +67,13 @@ class Clip:
         pos[:, :2] = pos[:, :2] @ np.array([[c, -s], [s, c]]).T
         qz = np.array([0, 0, np.sin(-yaw / 2), np.cos(-yaw / 2)])      # xyzw
         rot = np.array([_qmul_xyzw(qz, q) for q in self.root_rot])
-        return Clip(self.fps, pos, rot, self.dof, self.name)
+        obj = None
+        if self.obj is not None:
+            op = np.array(self.obj["pos"], float)
+            op[:2] = (op[:2] - self.root_pos[0, :2]) @ np.array([[c, -s], [s, c]]).T
+            ox, oy, oz, ow = _qmul_xyzw(qz, np.array(self.obj["quat"])[[1, 2, 3, 0]])
+            obj = {"pos": op, "quat": np.array([ow, ox, oy, oz])}
+        return Clip(self.fps, pos, rot, self.dof, self.name, obj)
 
     def write_gmt(self, path):
         """GMT / TWIST motion file (23 joints; body positions unused by the trackers, zero-filled)."""

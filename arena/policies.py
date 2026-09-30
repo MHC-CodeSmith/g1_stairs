@@ -397,7 +397,7 @@ def _ul():
 
 def make_fixed(name) -> ArenaPolicy:
     return _ul().UnitreeLabMimic(name.replace("unitree_", ""))
-TRACKERS = ["sonic_tracking", "gmt", "twist"]   # take a reference clip: make_tracker(name, clip)
+TRACKERS = ["sonic_tracking", "gmt", "twist", "grail_terrain"]   # take a reference clip: make_tracker(name, clip)
 
 
 def _sonic():
@@ -407,6 +407,9 @@ def _sonic():
 
 def make_tracker(name, clip) -> ArenaPolicy:
     from arena.trackers import Gmt, Twist
+    if name == "grail_terrain":
+        from arena.grail import GrailTerrain
+        return GrailTerrain(clip)
     return {"sonic_tracking": lambda: _sonic()(clip=clip), "gmt": lambda: Gmt(clip), "twist": lambda: Twist(clip)}[name]()
 
 

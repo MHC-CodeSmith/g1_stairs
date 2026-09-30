@@ -16,9 +16,10 @@ result files; GIFs in `docs/media/` and charts in `docs/figures/` are regenerate
 
 ## What was done
 
-- **Policies:** 17 pretrained policies from 11 repositories run on one simulated Unitree G1: 29 body joints plus Dex3
+- **Policies:** 18 pretrained policies from 12 repositories run on one simulated Unitree G1: 29 body joints plus Dex3
   hands, MuJoCo 3.6, 500 Hz physics, 50 Hz control. HumanoidBench supplies a stair course.
-  - 13 locomotion controllers, 2 more general motion trackers (SONIC doubles as the third) and 2 dance trackers.
+  - 13 locomotion controllers, 3 more general motion trackers (GMT, TWIST and GRAIL; SONIC doubles as a tracker) and
+    2 dance trackers.
   - Plus our own distilled controller, `g1_body`.
 - **Adapters:** each policy runs through an adapter that rebuilds its original observation, joint order, gains and
   action decoding.
@@ -42,22 +43,23 @@ result files; GIFs in `docs/media/` and charts in `docs/figures/` are regenerate
     CPU MuJoCo, even with their own compiled robot model (see [Safe100](#safe100humanoid-lzqw)).
 - **Best walker (velocity tracking).** NVIDIA WBC-AGILE (0.016 m/s error). **Most robust to pushes:** G1DWAQ, SONIC
   and `g1_body` (1000 N). **Rough ground:** only holosoma (both), AGILE and SONIC finish.
-- **Best motion tracker.** NVIDIA SONIC.
-  - Lowest heading error on every clip, and lowest root position error on 9 of 11 (GMT is 2 cm closer on the 4.6 s air
-    kick; squat is a tie).
-  - The only tracker that does not drift on long clips: GMT ends 14 m off on a 38 s walk.
-  - GMT has slightly lower joint error on short clips.
+- **Best motion tracker.** NVIDIA SONIC, among SONIC, GMT, TWIST and GRAIL on 11 clips.
+  - Lowest heading error on all 11 clips and lowest root position error on 7; the only one that never falls.
+  - Drift on long clips: GMT ends 14 m off on a 38 s walk.
+  - Joint error is closer: GMT is lowest on 5 clips, SONIC on 4, GRAIL on 2.
+  - GRAIL (a SONIC fine-tune for terrain and object tasks) tracks plain walking very well but falls on 4 of the 11
+    clips, the most dynamic ones. Its stair result could not be measured (see [GRAIL](#grail-nvidia)).
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  subgraph repos[11 repositories + HumanoidBench]
+  subgraph repos[12 repositories + HumanoidBench]
     A[G1DWAQ_Lab] ; B[WBC-AGILE] ; C[GR00T-WholeBodyControl<br/>WBC + SONIC] ; D[holosoma]
     E[unitree_rl_gym] ; F[unitree_rl_lab] ; G[mujoco_playground] ; H[g1_walk_isaaclab_mujoco]
-    I[GMT] ; J[TWIST] ; K[Safe100Humanoid] ; L[HumanoidBench<br/>stair course + reward]
+    I[GMT] ; J[TWIST] ; K[Safe100Humanoid] ; M[GRAIL] ; L[HumanoidBench<br/>stair course + reward]
   end
-  repos --> AD[Adapters<br/>arena/policies.py, sonic.py,<br/>trackers.py, unitree_lab.py, safe100.py]
+  repos --> AD[Adapters<br/>arena/policies.py, sonic.py,<br/>trackers.py, unitree_lab.py, safe100.py, grail.py]
   AD --> CHK{Equivalence check<br/>vs the repo's own loop}
   CHK --> AR[MuJoCo arena<br/>G1 29-DoF + Dex3]
   AR --> T1[scorecard.py<br/>7 locomotion tests]
@@ -87,10 +89,12 @@ we compare its observation and action with what our adapter computes from the sa
 | GMT | its `sim2sim.py` | 7.4e-6 | 3.7e-6 |
 | TWIST | its low-level sim server + high-level motion server | 3.9e-6 | 1.9e-6 |
 | Safe100 (CBF) | its mjlab env on MuJoCo-Warp (GPU) | 1.2e-5 | — (its own actions) |
+| GRAIL | none (Isaac Lab only); network + observations rebuilt from its code | — | — |
 | G1DWAQ, AGILE, GR00T WBC (Isaac side) | `tests/test_*_adapter.py`, `skills/validate.py` | ≤ 1.7e-4 | |
 
-SONIC and unitree_rl_lab only ship C++ deploy code, so those adapters follow the C++ line by line and were checked by
-behaviour instead. unitree_rl_lab's dance policies track their clips with 0.08 rad joint error and never fall; a
+SONIC and unitree_rl_lab only ship C++ deploy code, and GRAIL only runs inside Isaac Lab, so those adapters follow the
+source line by line and were checked by behaviour instead (GRAIL: on flat clips it follows plain walking within
+0.06 rad; a wrong observation layout falls within a second). unitree_rl_lab's dance policies track their clips with 0.08 rad joint error and never fall; a
 wrong observation would make them fall within seconds.
 
 **Tests** (all in `arena/`):
@@ -181,10 +185,10 @@ SONIC driven by its own motion planner (velocity commands → planned motion →
 
 {{T:Motion tracking}}
 
-| clip | SONIC | GMT | TWIST |
-|---|---|---|---|
-| GMT dance | ![](media/track_dance_sonic_tracking.gif) | ![](media/track_dance_gmt.gif) | ![](media/track_dance_twist.gif) |
-| GMT kick walk | ![](media/track_kick_sonic_tracking.gif) | ![](media/track_kick_gmt.gif) | ![](media/track_kick_twist.gif) |
+| clip | SONIC | GMT | TWIST | GRAIL |
+|---|---|---|---|---|
+| GMT dance | ![](media/track_dance_sonic_tracking.gif) | ![](media/track_dance_gmt.gif) | ![](media/track_dance_twist.gif) | ![](media/track_dance_grail_terrain.gif) |
+| GMT kick walk | ![](media/track_kick_sonic_tracking.gif) | ![](media/track_kick_gmt.gif) | ![](media/track_kick_twist.gif) | ![](media/track_kick_grail_terrain.gif) |
 
 unitree_rl_lab's dance policies on their own clips (`dance_102`, `gangnam_style`):
 
@@ -238,6 +242,7 @@ weakness on rough ground (it falls at 15 s); holosoma and AGILE, which finish th
 | [g1_walk_isaaclab_mujoco](https://github.com/yezzzzye/g1_walk_isaaclab_mujoco) | G1 + Dex3 walking (37 joints) | PPO, Isaac Lab + robust fine-tune | no | MIT | trained on an older G1; falls on ours |
 | [GMT](https://github.com/zixuan417/humanoid-general-motion-tracking) | general motion tracker (23 joints) | teacher PPO → student DAgger, mixture of experts | no | Apache-2.0 | good joints, drifts on long clips |
 | [TWIST](https://github.com/YanjieZe/TWIST) | teleoperation tracker | teacher PPO → student RL + BC | no (Redis) | MIT | weakest tracker; falls on Gangnam Style |
+| [GRAIL](https://github.com/NVlabs/GRAIL) | tracker fine-tuned on generated stair, curb, slope and object data (SONIC tokens + terrain height map) | large-scale tracking RL (SONIC recipe) on GRAIL-generated motions, Isaac Lab | yes (`nvgrail/grail`, for the data pipeline) | see repo (NVIDIA) | tracks walking well, falls on dynamic clips; stair result not measurable here |
 | [Safe100Humanoid](https://github.com/lzqw/Safe100Humanoid) | stair climbing with CBF safety | PPO + CBF-RL dual reward, mjlab / MuJoCo-Warp | no (ours: `docker/Dockerfile.mjlab`) | Apache-2.0 | 16/16 in its own sim, falls in <1 s on CPU MuJoCo |
 | [HumanoidBench](https://github.com/carlosferrazza/humanoid-bench) | benchmark tasks (H1-focused) | PPO, SAC, DreamerV3, TD-MPC2 baselines | no | MIT | its stair course and reward are an arena test |
 | [mujoco_menagerie](https://github.com/google-deepmind/mujoco_menagerie) | G1 MuJoCo models | — | — | BSD-3 | robot models |
@@ -266,6 +271,30 @@ learned model (MPPI); it is trained for the H1, not the G1.
   **Conclusion:** the released policy depends on MuJoCo-Warp's exact contact solution and does not transfer across
   simulators. This is a sim-to-sim robustness result, not an adapter error.
 
+### GRAIL (NVIDIA)
+
+- **What it is:** a pipeline that generates humanoid loco-manipulation data from 3D assets and video models, retargets
+  it to the G1, and trains task-general trackers on it. The released `terrain_release` checkpoint is SONIC's tracker
+  fine-tuned on stairs, curbs, slopes and sitting; its encoder also reads an 11 × 11 height map (and object terms).
+- **What we ran:** the network is rebuilt in `arena/grail.py` from GRAIL's code and the released weights (encoder,
+  Conv2d height-map projector, FSQ tokens, decoder, all dimensions checked against the checkpoint: 1920 = 10 ×
+  (58 + 6 + 128), 1093 = 64 tokens + 1029 proprioception).
+  - **Flat clips:** it runs the same 11 clips as the other trackers (table above). It has the lowest joint error on
+    the two plain walking clips (0.060 and 0.068 rad) and stays close to the reference heading, but falls on 4 of 11
+    clips (the two dances, the squat and Gangnam Style). It is a specialised fine-tune, not a general tracker.
+  - **Stairs:** not measurable. GRAIL's released stair meshes are normalised assets: the extracted mesh is
+    about 1.2 × 1.25 × 2.0 m while the reference walks 2.2 m along stairs with a 1.25 m drop, and no released scale or
+    placement reproduces that. We rebuilt a stair height field from the reference's own footfalls instead. On it every
+    tracker falls at the first step-down, including SONIC and GMT, so the failure is the reconstructed terrain, not
+    the policies (shifting the risers by -6 to +15 cm changed nothing):
+
+{{T:GRAIL stair attempt}}
+
+  ![](media/gstairs_grail_terrain.gif) ![](media/gstairs_sonic_tracking.gif)
+
+  A real evaluation needs GRAIL's Isaac Lab scene (the USD stairs with their runtime scaling), which needs Isaac Sim
+  and is the next step.
+
 ### GR00T (NVIDIA)
 
 - **In the arena:** the GR00T WBC (Walk/Balance) and SONIC controllers run in every test and train our student.
@@ -278,7 +307,7 @@ learned model (MPPI); it is trained for the H1, not the G1.
 
 | repository | status | reason |
 |---|---|---|
-| [NVlabs/GRAIL](https://github.com/NVlabs/GRAIL) | inspected (code, `terrain_release` checkpoint config); not run | its stair tracker is a SONIC fine-tune that also reads an 11×11 terrain height map and object observations; it needs GRAIL's retargeted stair motions and USD stair meshes, and its evaluation runs in its Isaac Lab stack. Porting it is the next step. |
+| [NVlabs/GRAIL](https://github.com/NVlabs/GRAIL) | tracker ported and scored on flat clips; **stair result not measured** | its released stair meshes cannot be placed to match the reference motions here; the reconstructed terrain makes every tracker fall (see the GRAIL section). Needs its Isaac Lab scene. |
 | GR00T N1.7 | not run | ≥16 GB GPU for inference, ≥40 GB to fine-tune |
 | HumanoidBench baselines | not applicable | trained for the H1 robot; its course and reward are used instead |
 | unitree_mujoco | no policy | simulator + SDK bridge for testing robot code |

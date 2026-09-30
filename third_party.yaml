@@ -12,6 +12,7 @@ repos:
   Safe100Humanoid:           {url: https://github.com/lzqw/Safe100Humanoid, commit: 137d0adfdfbe42ca7fd3f96927af6205f69b8519, license: Apache-2.0, gives: "G1 stair policies trained with CBF-RL (results/models/{cbf,nominal}/policy.onnx), mjlab task"}
   unitree_rl_lab:            {url: https://github.com/unitreerobotics/unitree_rl_lab, commit: 4960b84732b0c2ec593dccbfe963fda1bcd7b1e3, license: Apache-2.0, gives: "G1 29-DoF velocity policy and two dance (mimic) policies with their clips, C++ deploy"}
   humanoid-bench:            {url: https://github.com/carlosferrazza/humanoid-bench, commit: cb1189039151c8aadaaa987b442da54383c87fab, license: MIT, gives: "stair course geometry and reward reused by arena/stairs_bench.py"}
+  GRAIL:                     {url: https://github.com/NVlabs/GRAIL, commit: 8b9afa5c0b10e8d26ea066c8475893eec8ea9165, license: "see repo (NVIDIA)", gives: "generated stair/curb/slope data pipeline; source read for the terrain tracker (arena/grail.py); weights and clips come from the Hugging Face dataset below"}
   mujoco_menagerie:          {url: https://github.com/google-deepmind/mujoco_menagerie, commit: c96a32d28fb5da84da38c1da4d749e7a13212855, license: "BSD-3-Clause (unitree_g1)", gives: "unitree_g1 g1.xml and g1_with_hands.xml (Dex3-1)"}
 huggingface:
   nvidia/GEAR-SONIC:
@@ -25,3 +26,16 @@ huggingface:
             model/checkpoint/model/init_kwargs.json, model/checkpoint/model/model.safetensors, model/checkpoint/train_status.json,
             model/exported/FBcprAuxModel.onnx, model/goal_inference/goal_reaching.pkl, model/reward_inference/reward_locomotion.pkl,
             model/tracking_inference/zs_walking.pkl]
+  nvidia/PhysicalAI-Robotics-Locomanipulation-GRAIL:
+    dataset: true
+    dir: GRAIL
+    license: "see the dataset card (NVIDIA)"
+    files:
+      - {src: checkpoint/SONIC/models/terrain_release/last.pt, dst: terrain_release/last.pt}
+      - {src: checkpoint/SONIC/models/terrain_release/config.yaml, dst: terrain_release/config.yaml}
+      - {src: data/stair_p1/robot/terrain_stairs__aged_terracotta_tile_straight_single_flight_staircase_with_12_warm_orange_steps_in_one_straight_run_no_handrails_no_curves_no_turns__0000.pkl, dst: data/stair_p1/robot/terrain_stairs__aged_terracotta_tile_straight_single_flight_staircase_with_12_warm_orange_steps_in_one_straight_run_no_handrails_no_curves_no_turns__0000.pkl}
+      - {src: data/stair_p1/objects/terrain_stairs__aged_terracotta_tile_straight_single_flight_staircase_with_12_warm_orange_steps_in_one_straight_run_no_handrails_no_curves_no_turns__0000.pkl, dst: data/stair_p1/objects/terrain_stairs__aged_terracotta_tile_straight_single_flight_staircase_with_12_warm_orange_steps_in_one_straight_run_no_handrails_no_curves_no_turns__0000.pkl}
+      - {src: data/stair_p1/robot/terrain_stairs__aged_terracotta_tile_straight_single_flight_staircase_with_12_warm_orange_steps_in_one_straight_run_no_handrails_no_curves_no_turns_updown__0000.pkl, dst: data/stair_p1/robot/terrain_stairs__aged_terracotta_tile_straight_single_flight_staircase_with_12_warm_orange_steps_in_one_straight_run_no_handrails_no_curves_no_turns_updown__0000.pkl}
+      - {src: data/stair_p1/objects/terrain_stairs__aged_terracotta_tile_straight_single_flight_staircase_with_12_warm_orange_steps_in_one_straight_run_no_handrails_no_curves_no_turns_updown__0000.pkl, dst: data/stair_p1/objects/terrain_stairs__aged_terracotta_tile_straight_single_flight_staircase_with_12_warm_orange_steps_in_one_straight_run_no_handrails_no_curves_no_turns_updown__0000.pkl}
+      - {src: data/stair_p1/robot/terrain_stairs__antique_worn_stone_straight_single_flight_staircase_with_14_rectangular_steps_in_one_straight_run_no_handrails_no_curves_no_turns__0000.pkl, dst: data/stair_p1/robot/terrain_stairs__antique_worn_stone_straight_single_flight_staircase_with_14_rectangular_steps_in_one_straight_run_no_handrails_no_curves_no_turns__0000.pkl}
+      - {src: data/stair_p1/objects/terrain_stairs__antique_worn_stone_straight_single_flight_staircase_with_14_rectangular_steps_in_one_straight_run_no_handrails_no_curves_no_turns__0000.pkl, dst: data/stair_p1/objects/terrain_stairs__antique_worn_stone_straight_single_flight_staircase_with_14_rectangular_steps_in_one_straight_run_no_handrails_no_curves_no_turns__0000.pkl}

@@ -43,6 +43,11 @@ def jobs():
     for p in ["g1_body", "gr00t_wbc", "agile_vel_height", "unitree_rl_gym"]:
         J.append((f"arms_{p}", "run", dict(policy_name=p, terrain="flat", schedule="walk", seconds=12, arms=True,
                                            cam=FRONT), (1.0, 11.0)))
+    for p in ["grail_terrain"]:
+        J.append((f"track_dance_{p}", "track", dict(policy=p, clip="gmt_dance"), (0.0, 12.0)))
+        J.append((f"track_kick_{p}", "track", dict(policy=p, clip="gmt_kick_walk"), (0.0, 6.0)))
+    for p in ["grail_terrain", "sonic_tracking"]:
+        J.append((f"gstairs_{p}", "gstairs", dict(policy=p), (0.0, 6.0)))
     for p in ["sonic_tracking", "gmt", "twist"]:
         J.append((f"track_dance_{p}", "track", dict(policy=p, clip="gmt_dance"), (0.0, 12.0)))
         J.append((f"track_kick_{p}", "track", dict(policy=p, clip="gmt_kick_walk"), (0.0, 6.0)))
@@ -80,6 +85,10 @@ def work(job):
         elif kind == "sweep":
             from arena.stairs_bench import episode
             episode(kw["policy"], f"steps:{kw['rise']}:0.3:8", 0.5, 14.0, video=mp4, cam=SIDE)
+        elif kind == "gstairs":
+            from arena.grail import stair_clip_names, track_on_stairs
+            track_on_stairs(kw["policy"], stair_clip_names()[0], video=mp4,
+                            cam={"cam_distance": 3.2, "azimuth": 90.0, "elevation": -8.0})
         elif kind == "track":
             from arena.track import load_clip, track
             clip = load_clip(kw["clip"]) if kw["clip"] else None
