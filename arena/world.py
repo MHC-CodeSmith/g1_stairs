@@ -127,6 +127,27 @@ def add_terrain(spec: mujoco.MjSpec, kind: str, seed: int = 0):
                     material="step", friction=fr)
         for i in range(10):
             box(top_x + 1.2 + run * (i + 0.5), rise * (10 - i))
+    elif kind == "hb_stairs":  # HumanoidBench stair task (assets/locomotion/generated_xml_stairs.xml), robot at x=0
+        for cx in (3.2, 9.2, 15.2, 21.2):              # 4 pyramids: 5 layers of 0.18 m, 0.6 m treads, up then down
+            for k, half in enumerate((2.7, 2.1, 1.5, 0.9, 0.3)):
+                wb.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=[half, 5.0, 0.09], pos=[cx, 0, 0.09 + 0.18 * k],
+                            material="step", friction=fr)
+        for pos, size in (([13.5, -5.05, 2], [15.5, 0.1, 2]), ([13.5, 5.05, 2], [15.5, 0.1, 2]),
+                          ([-2.1, 0, 2], [0.1, 7.25, 2])):
+            wb.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=size, pos=pos, material="step", friction=fr)
+    elif kind.startswith("steps"):  # "steps:<rise>:<run>:<n>": n steps up from x=0.6, 1.2 m top platform, n down
+        _, rise, run, n = kind.split(":")
+        rise, run, n, x0, w = float(rise), float(run), int(n), 0.6, 2.4
+
+        def box2(cx, h, half):
+            wb.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=[half, w / 2, h / 2], pos=[cx, 0, h / 2],
+                        material="step", friction=fr)
+        for i in range(n):
+            box2(x0 + run * (i + 0.5), rise * (i + 1), run / 2)
+        top = x0 + run * n
+        box2(top + 0.6, rise * n, 0.6)
+        for i in range(n):
+            box2(top + 1.2 + run * (i + 0.5), rise * (n - i), run / 2)
     elif kind != "flat":
         raise ValueError(kind)
 

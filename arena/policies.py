@@ -378,7 +378,25 @@ REGISTRY = {
     "agile_vel_height": Agile,
     "sonic": lambda: _sonic()(),
     "g1_body": G1Body,
+    "unitree_rl_lab": lambda: _ul().UnitreeLabVelocity(),
+    "safe100_cbf": lambda: _s100()("cbf"),
+    "safe100_nominal": lambda: _s100()("nominal"),
 }
+
+
+def _s100():
+    from arena.safe100 import Safe100
+    return Safe100
+FIXED_CLIP = ["unitree_dance_102", "unitree_gangnam_style"]   # trackers bound to their own clip: make_fixed(name)
+
+
+def _ul():
+    from arena import unitree_lab
+    return unitree_lab
+
+
+def make_fixed(name) -> ArenaPolicy:
+    return _ul().UnitreeLabMimic(name.replace("unitree_", ""))
 TRACKERS = ["sonic_tracking", "gmt", "twist"]   # take a reference clip: make_tracker(name, clip)
 
 

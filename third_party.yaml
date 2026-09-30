@@ -9,6 +9,9 @@ repos:
   BFM-Zero:                  {url: https://github.com/LeCAR-Lab/BFM-Zero, commit: 318cf44a3262e5bdec5944f82f1a5f509b95d09b, license: "CC-BY-NC-4.0 (non-commercial)", gives: "promptable behavior foundation model code (humanoidverse)"}
   humanoid-general-motion-tracking: {url: https://github.com/zixuan417/humanoid-general-motion-tracking, commit: 2a590de25a1eb08e47491977a738549c22f16e1f, license: Apache-2.0, gives: "GMT general motion tracker (pretrained.pt) + MuJoCo sim2sim"}
   TWIST:                     {url: https://github.com/YanjieZe/TWIST, commit: 42d8c134739eee51f28d7cc0ff72a86728afb8dc, license: MIT, gives: "TWIST general motion tracker (jit) + G1 MJCF with hands"}
+  Safe100Humanoid:           {url: https://github.com/lzqw/Safe100Humanoid, commit: 137d0adfdfbe42ca7fd3f96927af6205f69b8519, license: Apache-2.0, gives: "G1 stair policies trained with CBF-RL (results/models/{cbf,nominal}/policy.onnx), mjlab task"}
+  unitree_rl_lab:            {url: https://github.com/unitreerobotics/unitree_rl_lab, commit: 4960b84732b0c2ec593dccbfe963fda1bcd7b1e3, license: Apache-2.0, gives: "G1 29-DoF velocity policy and two dance (mimic) policies with their clips, C++ deploy"}
+  humanoid-bench:            {url: https://github.com/carlosferrazza/humanoid-bench, commit: cb1189039151c8aadaaa987b442da54383c87fab, license: MIT, gives: "stair course geometry and reward reused by arena/stairs_bench.py"}
   mujoco_menagerie:          {url: https://github.com/google-deepmind/mujoco_menagerie, commit: c96a32d28fb5da84da38c1da4d749e7a13212855, license: "BSD-3-Clause (unitree_g1)", gives: "unitree_g1 g1.xml and g1_with_hands.xml (Dex3-1)"}
 huggingface:
   nvidia/GEAR-SONIC:

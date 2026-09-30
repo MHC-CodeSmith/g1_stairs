@@ -50,6 +50,16 @@ the G1 29-DoF **with Dex3 hands**, as many repos combined as possible, and a pat
 - Pushes: G1DWAQ, SONIC and g1_body survive 1000 N. g1_walk37_* fall on flat; they need their own robot model.
 - Tracking: SONIC best overall and the only one that holds heading on long clips (GMT drifts 3 m on a 38 s walk).
 
+## Arena report (2026-09-29)
+- `docs/ARENA_REPORT.md` (built by `tools/build_report.py` from `output/*.json`; GIFs by `tools/make_media.py`, charts by
+  `tools/report_figures.py`). New: Safe100 (`arena/safe100.py`, checked in its own mjlab env with
+  `tools/check_safe100.py` / `docker/Dockerfile.mjlab`, needs PYTORCH_JIT=0), unitree_rl_lab (`arena/unitree_lab.py`),
+  HumanoidBench stair course + step sweep + Safe100 staircase (`arena/stairs_bench.py`).
+- Stairs: only G1DWAQ (up to 22 cm) and g1_body (up to 20 cm, best HumanoidBench return 622) climb. Safe100 works only
+  on MuJoCo-Warp (falls on CPU MuJoCo even with its own compiled model).
+- GRAIL (NVlabs): terrain tracker = SONIC fine-tune + 11x11 height map + object obs; config in third_party/hf/GRAIL;
+  port not done. Disk on this machine is ~full (5 GB free): the GRAIL clone (4.9 GB) was deleted.
+
 ## Open (in order)
 1. **Next g1_body run**: keep the DWAQ imitation weight high longer (the stairs fade after ~700 it); add rough-terrain
    robustness (student falls on rough at 15 s, like its teachers) — holosoma/AGILE could teach rough.

@@ -117,18 +117,16 @@ cinemática inversa dos braços no GR00T WBC desacoplado.
 ### mujoco_menagerie (Google DeepMind)
 - Modelos MuJoCo curados; usamos o G1 com e sem mãos. Não treina nada.
 
-## Repositórios citados no começo que não estão na pipeline
-- **Safe100Humanoid** (lzqw): escada com mjlab + MuJoCo Warp + RSL-RL e segurança por CBF. Não foi usado: o G1DWAQ_Lab
-  já tinha um checkpoint pronto que subia escada. Pode entrar como segundo professor de escada.
-- **unitree_mujoco**: simulador MuJoCo com a ponte do SDK2 da Unitree (C++/Python). Não treina; serve para testar o
-  código do robô real.
-- **unitree_rl_lab**: tarefas de RL da Unitree no Isaac Lab (PPO). Não usamos um checkpoint dele.
-- **unitree_sim_isaaclab**: simulação Isaac Lab para teleoperação e coleta de dados via DDS. Útil depois, para coletar
-  dados das mãos Dex3.
-- **RLinf**: infraestrutura de RL em escala para agentes e VLAs (ajuste fino de VLA com RL). Útil na fase de VLA na nuvem.
-- **Unitree-G1-Humanoid-Robot-Tasks** (ThejasDevadiga): coleção de tarefas; não usado.
-
-Esses seis não foram clonados aqui, então o que está acima vem da documentação deles, não de teste nosso.
+## Repositórios adicionados depois (testados na arena)
+Resultados completos, GIFs e gráficos em [`docs/ARENA_REPORT.md`](ARENA_REPORT.md).
+- **Safe100Humanoid** (lzqw, Apache-2.0): escada com CBF-RL (mjlab + MuJoCo-Warp + PPO). No simulador dele sobe
+  16/16 escadas; no MuJoCo de CPU cai em menos de 1 s, mesmo com o modelo compilado dele (dependência do simulador).
+- **unitree_rl_lab** (Unitree, Apache-2.0, tem Docker): política de andar 29-DoF (anda bem, não sobe escada) e duas
+  danças (rastreiam o próprio clipe com 0,08 rad de erro).
+- **HumanoidBench**: o percurso de escada e a recompensa dele viraram um teste da arena (as políticas dele são para o H1).
+- **GRAIL** (NVIDIA): rastreador de escada derivado do SONIC com mapa de altura; inspecionado, ainda não rodado.
+- **unitree_mujoco, unitree_sim_isaaclab, RLinf, Unitree-G1-Humanoid-Robot-Tasks**: não têm política de G1 para testar
+  (simulador, cenas de teleoperação, infraestrutura de RL, coleção de tarefas).
 
 ## O que ler primeiro para estudar a junção
 1. `skills/adapters.py`: como políticas de origens diferentes ganham a mesma interface, e `gain_equivalent_target`

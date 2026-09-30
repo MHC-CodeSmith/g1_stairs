@@ -47,7 +47,7 @@ def cmd_at(schedule, t):
 
 
 def run(policy_name, terrain="flat", schedule="walk", seconds=20.0, video=None, push=None, seed=0,
-        heading_hold=True, verbose=False, arms=False, robot_xml=None):
+        heading_hold=True, verbose=False, arms=False, robot_xml=None, cam=None):
     """arms: wave the arm joints the policy does not control. robot_xml: another robot model (e.g. without hands)."""
     arena = Arena(terrain, seed=seed, render=video is not None, **({"robot_xml": robot_xml} if robot_xml else {}))
     pol = make(policy_name)
@@ -87,7 +87,7 @@ def run(policy_name, terrain="flat", schedule="walk", seconds=20.0, video=None, 
             if fall_t is not None and st.t > fall_t + 1.0:
                 break
             if video is not None and k % (dec * 2) == 0:
-                frames.append(arena.render())
+                frames.append(arena.render(**(cam or {})))
         arena.step_physics(1)
     L = np.array(log)
     # columns: t, x, y, z, height, vx_b, vy_b, vz_b, wz_b, cmd vx, cmd vy, cmd wz, cmd height

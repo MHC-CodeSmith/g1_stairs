@@ -14,7 +14,7 @@ import os
 
 import numpy as np
 
-from arena.policies import MJ29, TRACKERS, make_tracker
+from arena.policies import FIXED_CLIP, MJ29, TRACKERS, make_fixed, make_tracker
 from arena.trackers import GMT_ROOT, IDX23, Clip
 from arena.world import TP, Arena, Command
 
@@ -23,16 +23,27 @@ def clips():
     out = {"sonic_walk": os.path.join(TP, "hf/GEAR-SONIC/sample_data/robot_filtered/210531/walk_forward_amateur_001__A001.pkl")}
     for p in sorted(glob.glob(os.path.join(GMT_ROOT, "assets/motions/*.pkl"))):
         out["gmt_" + os.path.basename(p)[:-4]] = p
+    out["unitree_dance_102"] = out["unitree_gangnam_style"] = None      # built by load_clip
     return out
 
 
 def load_clip(name):
+    if name.startswith("unitree_"):              # unitree_rl_lab dance clips, the window its own policy plays
+        from arena.unitree_lab import MIMIC, ROOT, MotionCsv
+        c = name[len("unitree_"):]
+        f, t0, t1 = MIMIC[c]
+        return MotionCsv(os.path.join(ROOT, "mimic", c, "params", f)).to_clip(t0, t1, name).anchored()
     p = clips()[name]
     return (Clip.from_sonic_pkl(p) if name.startswith("sonic") else Clip.from_gmt_pkl(p)).anchored()
 
 
-def track(policy_name, clip: Clip, video=None, terrain="flat", verbose=False, lookahead=2.0):
-    pol = make_tracker(policy_name, clip)
+def track(policy_name, clip: Clip | None, video=None, terrain="flat", verbose=False, lookahead=2.0, cam=None):
+    """clip=None for a tracker bound to its own clip (FIXED_CLIP)."""
+    if policy_name in FIXED_CLIP:
+        pol = make_fixed(policy_name)
+        clip, lookahead = pol.clip.anchored(), 0.1
+    else:
+        pol = make_tracker(policy_name, clip)
     arena = Arena(terrain, render=video is not None)
     # reference sampled at 50 Hz
     T = int((clip.seconds - lookahead) * 50)          # stop before the trackers' look-ahead runs off the clip
@@ -67,7 +78,7 @@ def track(policy_name, clip: Clip, video=None, terrain="flat", verbose=False, lo
             break
         arena.set_targets(pol.joints, pol.act(st, Command()), pol.kp, pol.kd)
         if video is not None and k % 2 == 0:
-            frames.append(arena.render())
+            frames.append(arena.render(**(cam or {})))
         arena.step_physics(dec)
     res = {"policy": policy_name, "clip": clip.name, "seconds": round(T / 50, 1), "fell": fall_t is not None,
            "fall_t": fall_t, "joint_err": float(np.mean(jerr)), "root_xy_err": float(np.mean(perr)),
@@ -87,10 +98,13 @@ if __name__ == "__main__":
     ap.add_argument("--clip", default="sonic_walk", help="clip name, comma list, or 'all'")
     ap.add_argument("--video", default=None)
     a = ap.parse_args()
+    for n in a.policy.split(","):
+        if n in FIXED_CLIP:
+            track(n, None, a.video, verbose=True)
     names = list(clips()) if a.clip == "all" else a.clip.split(",")
     for c in names:
         clip = load_clip(c)
-        for n in a.policy.split(","):
+        for n in [p for p in a.policy.split(",") if p not in FIXED_CLIP]:
             try:
                 track(n, clip, a.video, verbose=True)
             except Exception as e:

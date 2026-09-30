@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libegl1 libgl1 
     && mkdir -p /usr/share/glvnd/egl_vendor.d \
     && printf '{"file_format_version":"1.0.0","ICD":{"library_path":"libEGL_nvidia.so.0"}}\n' > /usr/share/glvnd/egl_vendor.d/10_nvidia.json
 RUN pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu && \
-    pip install mujoco==3.6.0 onnxruntime==1.20.1 onnx==1.17.0 "numpy<2.3" scipy pyyaml joblib imageio==2.37.0 imageio-ffmpeg==0.6.0 \
+    pip install mujoco==3.6.0 onnxruntime==1.20.1 onnx==1.17.0 "numpy<2.3" scipy pyyaml joblib imageio==2.37.0 imageio-ffmpeg==0.6.0 matplotlib==3.9.2 huggingface_hub \
                 safetensors tqdm termcolor loguru tyro pydantic importlib_metadata defusedxml pyzmq
 WORKDIR /workspace/g1_stairs
 ENTRYPOINT ["python"]
