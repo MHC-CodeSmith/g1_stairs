@@ -64,7 +64,7 @@ GPU only (`-e NVIDIA_VISIBLE_DEVICES=1`); stay idle while a training job runs.
   OP3, Berkeley humanoid) + manipulation (Panda, Aloha, LEAP, Aero hand); you train them yourself.
 - holosoma: G1 29-DoF loco fastsac+ppo (used), T1 loco fastsac+ppo, **G1 whole-body-tracking dancing fastsac+ppo ONNX
   (`models/wbt/*_g1_29dof_dancing.onnx`) NOT yet in the arena** (candidate to add).
-- humanoid-bench: 27 tasks (12 locomotion), only 2 pretrained `.pt` (reach) - it is a benchmark, H1-focused.
+- humanoid-bench: 32 registered tasks, only 2 pretrained `.pt` (reach) - it is a benchmark, H1-focused.
 - GMT 1 checkpoint (23 DoF) + 8 example motions; TWIST 1 checkpoint (23+wrist); g1_walk 2 policies (baseline/robust,
   older 37-joint G1); Safe100 2 (cbf/nominal); GRAIL 3 releases (`pnp_table`, `pnp_ground`, `terrain`) + dataset of
   1000 clips per category (stairs p1/p2, curb, slope, sitting, pickup_ground, pickup_table); BFM-Zero 1 model with

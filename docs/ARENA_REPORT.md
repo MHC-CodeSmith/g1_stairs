@@ -114,6 +114,8 @@ wrong observation would make them fall within seconds.
 | Safe100 staircase | its evaluation stairs: 6 × 13 cm, 0.35 m treads, 16 randomised starts | % ending on top |
 | tracking | reference clip from its first frame | joint, root position and heading errors |
 
+Tracking runs stop before the trackers' look-ahead runs off the clip, so the same clip is shorter for SONIC, GMT, TWIST and GRAIL (19.2 s) than for unitree_rl_lab's own policy (21.1 s).
+
 ## Who climbs stairs best
 
 ![HumanoidBench return](figures/stairs_humanoidbench.png)
@@ -158,8 +160,9 @@ wrong observation would make them fall within seconds.
 DreamerV3, TD-MPC2) are trained on its reward. The policies here never saw that reward, so the arena reuses only its
 course and its score formula:
 
-- **Reward:** staying upright with the head at least 1.2 m above the feet, small torques, and moving forward at up to
-  1 m/s.
+- **Reward:** staying upright with the head high, small torques, and moving forward at up to 1 m/s. HumanoidBench's
+  H1 version asks for an absolute head height of 1.65 m; for the G1 the arena uses at least 1.2 m above the feet
+  (its own choice, the G1 is shorter).
 - **G1 measurements:** head, feet and centre-of-mass velocity are taken as HumanoidBench's own G1 model defines them.
 - **Results:** `g1_body` and G1DWAQ climb about 0.87 m, i.e. five 18 cm steps. Every other policy falls at the first
   step and scores about 16–53.
@@ -333,7 +336,7 @@ you one trained policy. Only the second kind can be benchmarked as-is.
 | repository | headline breadth | pre-trained G1 policies actually shipped | tested in the arena |
 |---|---|---|---|
 | [mujoco_playground](https://github.com/google-deepmind/mujoco_playground) | ~49 locomotion environments (G1, T1, H1, Go1, Spot, Barkour, Apollo, OP3, Berkeley humanoid) plus manipulation (Panda, Aloha, LEAP, Aero hand) | **6 small sim2sim demo ONNX** (`experimental/sim2sim/onnx`), of which 1 is a G1; everything else you train yourself | the G1 demo policy (average; falls on rough ground) |
-| [HumanoidBench](https://github.com/carlosferrazza/humanoid-bench) | 27 whole-body tasks (12 locomotion, 15 manipulation) | **0 for the G1** (2 `.pt` files, both for a reach task); baselines are trained for the H1 | its stair course and reward as a test, not its policies |
+| [HumanoidBench](https://github.com/carlosferrazza/humanoid-bench) | 32 registered whole-body tasks (locomotion and manipulation) | **0 for the G1** (2 `.pt` files, both for a reach task); baselines are trained for the H1 | its stair course and reward as a test, not its policies |
 | [mujoco_menagerie](https://github.com/google-deepmind/mujoco_menagerie) | about 70 robot models | not applicable (models only) | the G1 models |
 | [holosoma](https://github.com/amazon-far/holosoma) | G1 and T1, PPO and FastSAC, IsaacGym / IsaacSim / MJWarp, retargeting, whole-body tracking | **6 ONNX**: G1 walking (2), T1 walking (2), **G1 dance tracking (2)** | G1 walking (2); the dance trackers are not in the arena yet |
 | [unitree_rl_lab](https://github.com/unitreerobotics/unitree_rl_lab) | tasks for Go2, H1 and G1 in Isaac Lab | **3 G1**: velocity, 2 dances | all three |
@@ -354,7 +357,7 @@ you one trained policy. Only the second kind can be benchmarked as-is.
   across two robots and two tasks) are the richest sources of ready policies. In the arena SONIC also gave the best
   tracking and most robust pushing; holosoma was the only non-NVIDIA source that finished rough ground.
 - **Most environments, almost no policies.** mujoco_playground and HumanoidBench advertise the largest catalogues (49 and
-  27 tasks), but ship one G1 demo policy and none for the G1 respectively: value comes from training on them.
+  32 tasks), but ship one G1 demo policy and none for the G1 respectively: value comes from training on them.
 - **One policy, done well.** G1DWAQ and Safe100 are single-purpose stair climbers. G1DWAQ is the only one that
   transfers to our simulator; Safe100 only works in the simulator it was trained in.
 - **"A thousand" is usually data.** GRAIL's ~1000 clips per category and the retargeting datasets of GMT and TWIST are
