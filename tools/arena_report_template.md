@@ -240,7 +240,7 @@ you one trained policy. Only the second kind can be benchmarked as-is.
 
 | repository | headline breadth | pre-trained G1 policies actually shipped | tested in the arena |
 |---|---|---|---|
-| [mujoco_playground](https://github.com/google-deepmind/mujoco_playground) | ~49 locomotion environments (G1, T1, H1, Go1, Spot, Barkour, Apollo, OP3, Berkeley humanoid) plus manipulation (Panda, Aloha, LEAP, Aero hand) | **0**: you train every environment yourself; our G1 policy is the ONNX from its Colab-style export | G1 joystick policy (average; falls on rough ground) |
+| [mujoco_playground](https://github.com/google-deepmind/mujoco_playground) | ~49 locomotion environments (G1, T1, H1, Go1, Spot, Barkour, Apollo, OP3, Berkeley humanoid) plus manipulation (Panda, Aloha, LEAP, Aero hand) | **6 small sim2sim demo ONNX** (`experimental/sim2sim/onnx`), of which 1 is a G1; everything else you train yourself | the G1 demo policy (average; falls on rough ground) |
 | [HumanoidBench](https://github.com/carlosferrazza/humanoid-bench) | 27 whole-body tasks (12 locomotion, 15 manipulation) | **0 for the G1** (2 `.pt` files, both for a reach task); baselines are trained for the H1 | its stair course and reward as a test, not its policies |
 | [mujoco_menagerie](https://github.com/google-deepmind/mujoco_menagerie) | about 70 robot models | not applicable (models only) | the G1 models |
 | [holosoma](https://github.com/amazon-far/holosoma) | G1 and T1, PPO and FastSAC, IsaacGym / IsaacSim / MJWarp, retargeting, whole-body tracking | **6 ONNX**: G1 walking (2), T1 walking (2), **G1 dance tracking (2)** | G1 walking (2); the dance trackers are not in the arena yet |
@@ -261,8 +261,8 @@ you one trained policy. Only the second kind can be benchmarked as-is.
 - **Most policies, least depth.** GR00T-WholeBodyControl (SONIC's 27 planner modes inside one model) and holosoma (6 ONNX
   across two robots and two tasks) are the richest sources of ready policies. In the arena SONIC also gave the best
   tracking and most robust pushing; holosoma was the only non-NVIDIA source that finished rough ground.
-- **Most environments, no policies.** mujoco_playground and HumanoidBench advertise the largest catalogues (49 and 27
-  tasks), but ship nothing to run on a G1: value comes from training on them, not from checkpoints.
+- **Most environments, almost no policies.** mujoco_playground and HumanoidBench advertise the largest catalogues (49 and
+  27 tasks), but ship one G1 demo policy and none for the G1 respectively: value comes from training on them.
 - **One policy, done well.** G1DWAQ and Safe100 are single-purpose stair climbers. G1DWAQ is the only one that
   transfers to our simulator; Safe100 only works in the simulator it was trained in.
 - **"A thousand" is usually data.** GRAIL's ~1000 clips per category and the retargeting datasets of GMT and TWIST are
