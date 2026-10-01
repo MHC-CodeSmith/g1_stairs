@@ -135,6 +135,22 @@ def add_terrain(spec: mujoco.MjSpec, kind: str, seed: int = 0):
                         ncol=h.shape[1], userdata=(h / top).flatten().tolist())
         wb.add_geom(name="refhf", type=mujoco.mjtGeom.mjGEOM_HFIELD, hfieldname="ref",
                     pos=[float(z["cx"][0]), float(z["cx"][1]), 0.0], material="step", friction=fr)
+    elif kind.startswith("boxstairs:"):         # npz from terrain_from_reference: crisp boxes, not an hfield
+        z = np.load(kind[len("boxstairs:"):])
+        lvl, riser, dirn = z["levels"], z["risers"], z["dirn"]
+        yaw = float(np.arctan2(dirn[1], dirn[0]))
+        quat = [float(np.cos(yaw / 2)), 0.0, 0.0, float(np.sin(yaw / 2))]
+        width, margin = 2.4, 1.5
+        bounds = np.concatenate([[riser[0] - margin if len(riser) else -margin], riser,
+                                 [(riser[-1] if len(riser) else 0.0) + margin]])
+        for i, h in enumerate(lvl):
+            if h <= 0.02:
+                continue  # at/near ground: the floor plane already covers it
+            s0, s1 = float(bounds[i]), float(bounds[i + 1])
+            smid, half = (s0 + s1) / 2, max((s1 - s0) / 2, 0.02)
+            cx, cy = float(dirn[0] * smid), float(dirn[1] * smid)
+            wb.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=[half, width / 2, h / 2], pos=[cx, cy, h / 2],
+                        quat=quat, material="step", friction=fr)
     elif kind == "hb_stairs":  # HumanoidBench stair task (assets/locomotion/generated_xml_stairs.xml), robot at x=0
         for cx in (3.2, 9.2, 15.2, 21.2):              # 4 pyramids: 5 layers of 0.18 m, 0.6 m treads, up then down
             for k, half in enumerate((2.7, 2.1, 1.5, 0.9, 0.3)):

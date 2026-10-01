@@ -463,22 +463,33 @@ learned model (MPPI); it is trained for the H1, not the G1.
   - **Flat clips:** it runs the same 11 clips as the other trackers (table above). It has the lowest joint error on
     the two plain walking clips (0.060 and 0.068 rad) and stays close to the reference heading, but falls on 4 of 11
     clips (the two dances, the squat and Gangnam Style). It is a specialised fine-tune, not a general tracker.
-  - **Stairs:** not measurable. GRAIL's released stair meshes are normalised assets: the extracted mesh is
-    about 1.2 × 1.25 × 2.0 m while the reference walks 2.2 m along stairs with a 1.25 m drop, and no released scale or
-    placement reproduces that. We rebuilt a stair height field from the reference's own footfalls instead. On it every
-    tracker falls at the first step-down, including SONIC and GMT, so the failure is the reconstructed terrain, not
-    the policies (shifting the risers by -6 to +15 cm changed nothing):
+  - **Stairs:** GRAIL's released stair meshes are normalised assets: the extracted mesh is about 1.2 × 1.25 × 2.0 m
+    while the reference walks 2.2 m along stairs with a 1.25 m drop, and no released scale or placement reproduces
+    that, so we rebuilt a stair terrain from the reference's own footfalls instead
+    (`arena.grail.terrain_from_reference`). The first version of that terrain was a smoothed MuJoCo height field
+    (`arena.world`'s `hfield:` kind), and on it every tracker fell at the first step-down, including SONIC and GMT
+    (shifting the risers by -6 to +15 cm changed nothing) — read at the time as a policy failure.
 
-| clip | gmt | grail_terrain | sonic_tracking | twist |
+    Rebuilding the same reconstructed geometry as **crisp box steps** instead (`boxstairs:`, same `levels`/`risers`
+    the height field used, same `terrain_from_reference` call) changes that: the smoothing was part of the problem.
+
+| clip | gmt (hfield → boxes) | grail_terrain (hfield → boxes) | sonic_tracking (hfield → boxes) | twist (hfield → boxes) |
 |---|---|---|---|---|
-| down_12steps | fell at 1.5 s | fell at 1.9 s | fell at 3.2 s | fell at 1.4 s |
-| down_14steps | fell at 1.3 s | fell at 1.7 s | fell at 3.1 s | fell at 0.9 s |
-| up_down_12steps | fell at 1.4 s | fell at 4.1 s | fell at 2.1 s | fell at 1.7 s |
+| down_12steps | 1.5 s → 1.2 s | 1.9 s → 6.3 s | 3.2 s → **never falls** | 1.4 s → 1.2 s |
+| down_14steps | 1.3 s → 1.2 s | 1.7 s → 3.5 s | 3.1 s → **never falls** | 0.9 s → 0.8 s |
+| up_down_12steps | 1.4 s → 1.4 s | 4.1 s → 8.0 s | 2.1 s → **never falls** | 1.7 s → 1.5 s |
 
-  ![](media/gstairs_grail_terrain.gif) ![](media/gstairs_sonic_tracking.gif)
+  SONIC completes all three clips without falling on box terrain (root xy error up to 1.5 m, so it is not tracking
+  the reference footsteps precisely, but it climbs and descends the real stairs and stays upright). GRAIL survives
+  2-4x longer before falling. GMT and TWIST are unchanged either way — terrain smoothing was not their bottleneck;
+  they are simply the weaker trackers (as the flat-clip results already show).
 
-  A real evaluation needs GRAIL's Isaac Lab scene (the USD stairs with their runtime scaling), which needs Isaac Sim
-  and is the next step.
+  ![](media/gstairs_boxes_sonic_tracking.gif) ![](media/gstairs_boxes_grail_terrain.gif)
+
+  Still open: GRAIL itself still falls on all three, just later, and the root-tracking error on SONIC shows the
+  reconstructed stairs are not metrically identical to GRAIL's training distribution. A real evaluation on GRAIL's
+  own assets still needs its Isaac Lab scene (the USD stairs with their runtime scaling), which needs Isaac Sim and
+  is the next step. Reproduce: `tools/grail_stairs_boxes.py` (vs. the original `tools/grail_stairs_attempt.py`).
 
 ### GR00T (NVIDIA)
 
@@ -492,7 +503,7 @@ learned model (MPPI); it is trained for the H1, not the G1.
 
 | repository | status | reason |
 |---|---|---|
-| [NVlabs/GRAIL](https://github.com/NVlabs/GRAIL) | tracker ported and scored on flat clips; **stair result not measured** | its released stair meshes cannot be placed to match the reference motions here; the reconstructed terrain makes every tracker fall (see the GRAIL section). Needs its Isaac Lab scene. |
+| [NVlabs/GRAIL](https://github.com/NVlabs/GRAIL) | tracker ported and scored on flat clips and on a reconstructed stair terrain; **not GRAIL's own assets** | its released stair meshes cannot be placed to match the reference motions here; the reconstructed terrain (now crisp boxes, see the GRAIL section) lets SONIC and GRAIL survive much longer, but it is not metrically identical to GRAIL's training distribution. Needs its Isaac Lab scene for a real result. |
 | GR00T N1.7 | not run | ≥16 GB GPU for inference, ≥40 GB to fine-tune |
 | HumanoidBench baselines | not applicable | trained for the H1 robot; its course and reward are used instead |
 | unitree_mujoco | no policy | simulator + SDK bridge for testing robot code |

@@ -316,12 +316,17 @@ def load_stair_clip(name):
     return Clip(R["fps"], R["root_trans_offset"], R["root_rot"], R["dof"], short, obj)
 
 
-def track_on_stairs(policy, name, video=None, cam=None, riser_shift=0.0):
-    """Play a GRAIL stair clip through `policy` on the reference-derived stair terrain."""
+def track_on_stairs(policy, name, video=None, cam=None, riser_shift=0.0, boxes=False):
+    """Play a GRAIL stair clip through `policy` on the reference-derived stair terrain.
+
+    `boxes=True` uses crisp box steps (arena.world "boxstairs:") instead of the smoothed height field, to check
+    whether hfield edge-rounding (not the reconstructed geometry) was behind the original all-trackers-fall result.
+    """
     from arena.track import track
     clip = load_stair_clip(name).anchored()
     out = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output/grail_terrain")
     os.makedirs(out, exist_ok=True)
     path = terrain_from_reference(clip, os.path.join(out, f"{clip.name}_{policy}_{os.getpid()}.npz"),
                                   riser_shift=riser_shift)
-    return track(policy, clip, video, terrain=f"hfield:{path}", lookahead=0.2, cam=cam)
+    kind = f"boxstairs:{path}" if boxes else f"hfield:{path}"
+    return track(policy, clip, video, terrain=kind, lookahead=0.2, cam=cam)
