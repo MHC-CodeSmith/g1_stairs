@@ -156,13 +156,16 @@ Tracking runs stop before the trackers' look-ahead runs off the clip, so the sam
 | safe100_cbf | · | · | · | · | · | · | · | · | · |
 | safe100_nominal | · | · | · | · | · | · | · | · | · |
 
-**On the HumanoidBench course.** HumanoidBench's `stair` task was built for the Unitree H1. Its baselines (PPO, SAC,
-DreamerV3, TD-MPC2) are trained on its reward. The policies here never saw that reward, so the arena reuses only its
-course and its score formula:
+**On the HumanoidBench course.** HumanoidBench registers a native G1 stair environment (`g1-stair-v0`, its own
+`g1_torque_stair.xml`, own G1 starting pose, and its reward class already lowers the stand-height target to 1.28 m for
+a G1 instead of the H1's 1.65 m) — so the course itself is not an H1-only thing. What it does **not** ship is a
+trained G1 policy: of its 2 released `.pt` checkpoints, both are for a reach task, and its published PPO/SAC/DreamerV3/
+TD-MPC2 baselines were only run for the H1. The policies here never saw HumanoidBench's own reward, so the arena
+rebuilds the course and a reward in the same spirit (not HumanoidBench's own gym env) to score them on it:
 
-- **Reward:** staying upright with the head high, small torques, and moving forward at up to 1 m/s. HumanoidBench's
-  H1 version asks for an absolute head height of 1.65 m; for the G1 the arena uses at least 1.2 m above the feet
-  (its own choice, the G1 is shorter).
+- **Reward:** staying upright with the head high, small torques, and moving forward at up to 1 m/s. The arena measures
+  head height above the feet (not above the ground, since the course has steps) and requires at least 1.2 m —
+  close to, but not copied from, HumanoidBench's own 1.28 m absolute-head-height target for the G1.
 - **G1 measurements:** head, feet and centre-of-mass velocity are taken as HumanoidBench's own G1 model defines them.
 - **Results:** `g1_body` and G1DWAQ climb about 0.87 m, i.e. five 18 cm steps. Every other policy falls at the first
   step and scores about 16–53.
@@ -377,7 +380,7 @@ you one trained policy. Only the second kind can be benchmarked as-is.
 | repository | headline breadth | pre-trained G1 policies actually shipped | tested in the arena |
 |---|---|---|---|
 | [mujoco_playground](https://github.com/google-deepmind/mujoco_playground) | ~49 locomotion environments (G1, T1, H1, Go1, Spot, Barkour, Apollo, OP3, Berkeley humanoid) plus manipulation (Panda, Aloha, LEAP, Aero hand) | **6 small sim2sim demo ONNX** (`experimental/sim2sim/onnx`), of which 1 is a G1; everything else you train yourself | the G1 demo policy (average; falls on rough ground) |
-| [HumanoidBench](https://github.com/carlosferrazza/humanoid-bench) | 32 registered whole-body tasks (locomotion and manipulation) | **0 for the G1** (2 `.pt` files, both for a reach task); baselines are trained for the H1 | its stair course and reward as a test, not its policies |
+| [HumanoidBench](https://github.com/carlosferrazza/humanoid-bench) | 32 registered whole-body tasks (locomotion and manipulation), with native G1 variants (`g1-<task>-v0`) | **0 for the G1** (2 `.pt` files, both for a reach task, not G1); baselines are trained for the H1 | its stair course and reward as a test, not its policies |
 | [mujoco_menagerie](https://github.com/google-deepmind/mujoco_menagerie) | about 70 robot models | not applicable (models only) | the G1 models |
 | [holosoma](https://github.com/amazon-far/holosoma) | G1 and T1, PPO and FastSAC, IsaacGym / IsaacSim / MJWarp, retargeting, whole-body tracking | **6 ONNX**: G1 walking (2), T1 walking (2), **G1 dance tracking (2)** | G1 walking (2); the dance trackers are not in the arena yet |
 | [unitree_rl_lab](https://github.com/unitreerobotics/unitree_rl_lab) | tasks for Go2, H1 and G1 in Isaac Lab | **3 G1**: velocity, 2 dances | all three |
@@ -422,7 +425,7 @@ you one trained policy. Only the second kind can be benchmarked as-is.
 | [TWIST](https://github.com/YanjieZe/TWIST) | teleoperation tracker | teacher PPO → student RL + BC | no (Redis) | MIT | weakest tracker; falls on Gangnam Style |
 | [GRAIL](https://github.com/NVlabs/GRAIL) | tracker fine-tuned on generated stair, curb, slope and object data (SONIC tokens + terrain height map) | large-scale tracking RL (SONIC recipe) on GRAIL-generated motions, Isaac Lab | yes (`nvgrail/grail`, for the data pipeline) | see repo (NVIDIA) | tracks walking well, falls on dynamic clips; stair result not measurable here |
 | [Safe100Humanoid](https://github.com/lzqw/Safe100Humanoid) | stair climbing with CBF safety | PPO + CBF-RL dual reward, mjlab / MuJoCo-Warp | no (ours: `docker/Dockerfile.mjlab`) | Apache-2.0 | 16/16 in its own sim, falls in <1 s on CPU MuJoCo |
-| [HumanoidBench](https://github.com/carlosferrazza/humanoid-bench) | benchmark tasks (H1-focused) | PPO, SAC, DreamerV3, TD-MPC2 baselines | no | MIT | its stair course and reward are an arena test |
+| [HumanoidBench](https://github.com/carlosferrazza/humanoid-bench) | benchmark tasks, G1 envs registered but untrained | PPO, SAC, DreamerV3, TD-MPC2 baselines (H1 only) | no | MIT | its stair course and reward are an arena test |
 | [mujoco_menagerie](https://github.com/google-deepmind/mujoco_menagerie) | G1 MuJoCo models | — | — | BSD-3 | robot models |
 
 **MPC:** none of the G1 policies uses MPC. The closest is TD-MPC2, one of HumanoidBench's baselines, which plans with a
