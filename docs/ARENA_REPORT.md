@@ -161,7 +161,10 @@ Tracking runs stop before the trackers' look-ahead runs off the clip, so the sam
 a G1 instead of the H1's 1.65 m) — so the course itself is not an H1-only thing. What it does **not** ship is a
 trained G1 policy: of its 2 released `.pt` checkpoints, both are for a reach task, and its published PPO/SAC/DreamerV3/
 TD-MPC2 baselines were only run for the H1. The policies here never saw HumanoidBench's own reward, so the arena
-rebuilds the course and a reward in the same spirit (not HumanoidBench's own gym env) to score them on it:
+rebuilds the course and a reward in the same spirit (not HumanoidBench's own gym env) to score them on it. Checked
+directly: `gym.make("g1-stair-v0")` resets and steps correctly (87-d observation, 37-d action, the G1 with hands); a
+zero-action rollout falls and terminates at step 37, as expected for no motor torque. This is a smoke test, not a
+benchmark run — it confirms the env is real and not just dead registration code, nothing about any policy's quality.
 
 - **Reward:** staying upright with the head high, small torques, and moving forward at up to 1 m/s. The arena measures
   head height above the feet (not above the ground, since the course has steps) and requires at least 1.2 m —
