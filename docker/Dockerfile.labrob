@@ -62,7 +62,7 @@ RUN git clone https://github.com/giaf/hpipm.git /tmp/hpipm \
 # qpOASES (whole-body controller's qp solver); static lib by default, matches this project's
 # hardcoded set(qpOASES_LIBRARIES /usr/local/lib/libqpOASES.a)
 RUN git clone --depth 1 https://github.com/coin-or/qpOASES.git /tmp/qpOASES \
-    && cmake -S /tmp/qpOASES -B /tmp/qpOASES/build -DCMAKE_BUILD_TYPE=Release -DQPOASES_BUILD_EXAMPLES=OFF \
+    && cmake -S /tmp/qpOASES -B /tmp/qpOASES/build -DCMAKE_BUILD_TYPE=Release -DQPOASES_BUILD_EXAMPLES=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     && cmake --build /tmp/qpOASES/build -j"$(nproc)" && cmake --install /tmp/qpOASES/build \
     && rm -rf /tmp/qpOASES
 
@@ -83,6 +83,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         xvfb libgl1-mesa-dri \
     && rm -rf /var/lib/apt/lists/*
 
+# pybind11 (header-only): the bridge/labrob/ pyarena<->WalkingManager module links against
+# this project's WalkingControllerLibrary.a directly rather than vendoring a copy here.
+RUN uv pip install --python /opt/venvs/base/bin/python3 pybind11
+
 USER ${USER_UID}
-WORKDIR /workspace/labrob_mujoco_environment
+WORKDIR /workspace/g1_stairs/third_party/labrob_mujoco_environment
 CMD ["sleep", "infinity"]
