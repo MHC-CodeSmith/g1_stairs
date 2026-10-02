@@ -502,6 +502,60 @@ learned model (MPPI); it is trained for the H1, not the G1.
   - It drives the robot through exactly these controllers (`UNITREE_G1` uses the WBC, `UNITREE_G1_SONIC` uses SONIC
     tokens). The arena adapters are the layer it would sit on.
 
+## New controllers integrated from humanoid_repos_eval (classical MPC/WBC, no RL)
+
+[GuilhermeAsura/humanoid_repos_eval](https://github.com/GuilhermeAsura/humanoid_repos_eval) evaluated several more
+G1 control stacks outside this arena's original 14, with a particular focus on classical (non-learned) whole-body
+MPC/QP controllers: `wb_humanoid_mpc`, `labrob_mujoco_environment`, `RoMoCo`, and `g1_locomotion`. Rather than just
+cite their results, we integrated the most tractable of these - `labrob_mujoco_environment` - for real: its own
+code, called from our own arena's MuJoCo instance, not a re-run of its own standalone demo.
+
+### labrob_mujoco_environment (matteogoddi)
+
+IS-MPC (LIP-based footstep planning) + whole-body QP control: Pinocchio for rigid-body dynamics, HPIPM for the MPC
+QP, qpOASES for the WBC QP. Plain CMake/C++, no ROS. Unlike every other adapter in this arena (all PD-target, i.e.
+they output a joint angle + gain for our own PD loop to track), its `WalkingManager` computes full joint **torques**
+directly each 2 ms control step - architecturally the biggest outlier here.
+
+**Integration path:** `bridge/labrob/` is a pybind11 module wrapping `labrob::WalkingManager::init()`/`update()`
+directly (not a subprocess, not file/socket IPC); `arena/labrob.py` adapts it to the same `ArenaPolicy` interface
+every other policy uses, but through a new `Arena.tau_ext` path (`arena/world.py`) that injects raw torque
+alongside (or instead of) the PD term - added specifically for this, with zero effect on the existing 14 adapters.
+Building it needed labrob's own static library and qpOASES rebuilt with `-fPIC` (a shared pybind11 module can't
+link a non-PIC static lib) and six `extern` globals the library expects a `main_*.cpp` to define
+(`isMPCLoopClosed`, `isObserverActive`, ...) - see `bridge/labrob/bridge.cpp`'s comments.
+
+**Result - standing balance, closed loop, in our own arena's physics (not labrob's own simulator):**
+
+| test | duration | fell? | final pelvis height | height error vs. setpoint | lateral drift |
+|---|---|---|---|---|---|
+| reactive standing, flat ground | 8 s (4000 steps @ 500 Hz) | no | 0.7216 m | 3.5 mm (target 0.725112 m) | 0.123 m over 8 s |
+
+![labrob standing in our arena](media/labrob_standing.gif)
+
+A first bridge smoke test (frozen/open-loop state, no physics feedback) ran 500 control steps at the controller's
+own standing pose with zero NaN/Inf and plausible torques (|tau| <= ~16 Nm); the result above is the real
+closed-loop case, physics and all.
+
+**What this does *not* yet show:** commanded locomotion (vx/vy/wz). `WalkingManager` has no velocity-command input
+at all - its footstep planner (`FootstepPlannerCoop`) triggers from hand/wrist admittance forces, i.e. it is built
+for a human to walk a robot by the hand, not for a joystick. Making it walk on command in this arena would mean
+reverse-engineering that trigger logic to synthesize the forces it expects; not attempted here. It also has not
+been run on stairs, and `arena/run.py`'s shared harness resets every policy to the same base height (0.80 m), which
+is not labrob's own tuned standing pose (0.725112 m) - `tools/labrob_media.py` sets this explicitly instead.
+
+### Not yet integrated
+
+| repository | why it's harder than labrob | status |
+|---|---|---|
+| `wb_humanoid_mpc` | ROS 2 Jazzy, OCS2 (SQP optimal control), ~30-40 min CppAD codegen on first build | not started |
+| `RoMoCo` | ROS 2 Humble, Pinocchio, Clarabel.cpp (Rust) QP solver | not started |
+| `g1_locomotion` | ROS Noetic, linear MPC, built on `opensot` | not started |
+
+All three couple their control loop to a ROS node graph rather than exposing a plain C++ class like labrob's
+`WalkingManager`, so bridging them the same way would mean either running a ROS master alongside the arena's
+Python process or peeling the control logic out of its ROS wrapper - a materially bigger job than labrob's.
+
 ## What could not be run, and why
 
 | repository | status | reason |
