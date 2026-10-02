@@ -507,8 +507,8 @@ learned model (MPPI); it is trained for the H1, not the G1.
 [GuilhermeAsura/humanoid_repos_eval](https://github.com/GuilhermeAsura/humanoid_repos_eval) evaluated several more
 G1 control stacks outside this arena's original 14, with a particular focus on classical (non-learned) whole-body
 MPC/QP controllers: `wb_humanoid_mpc`, `labrob_mujoco_environment`, `RoMoCo`, and `g1_locomotion`. Rather than just
-cite their results, we integrated the most tractable of these - `labrob_mujoco_environment` - for real: its own
-code, called from our own arena's MuJoCo instance, not a re-run of its own standalone demo.
+cite their results, we integrated two of these for real: their own code, called from our own arena's MuJoCo
+instance, not a re-run of either repo's own standalone demo.
 
 ### labrob_mujoco_environment (matteogoddi)
 
@@ -544,17 +544,56 @@ reverse-engineering that trigger logic to synthesize the forces it expects; not 
 been run on stairs, and `arena/run.py`'s shared harness resets every policy to the same base height (0.80 m), which
 is not labrob's own tuned standing pose (0.725112 m) - `tools/labrob_media.py` sets this explicitly instead.
 
+### wb_humanoid_mpc (1X Technologies / Manuel Galliker)
+
+Whole-body nonlinear MPC built on OCS2: an SQP solver optimizing full-order torque-level dynamics in real time
+(CppAD-generated derivatives). No RL. Unlike labrob, this one outputs a full PD+feedforward action per joint
+(`q_des, qd_des, kp, kd, feed_forward_effort`) rather than a raw torque, and - unlike labrob - it genuinely takes a
+velocity command: `vx`, `vy`, desired pelvis height and `wz`, the same four degrees of freedom as this arena's own
+`Command` type.
+
+**Integration path:** `bridge/wbmpc/` wraps `WBMpcInterface -> SqpMpc -> WBMpcMrtJointController` (mirroring how
+`humanoid_wb_mpc_ros2/src/WBMpcRobotSim.cpp` itself constructs the same objects), called from Python with **no
+ROS2 node at all** - that file's own `rclcpp` usage turns out to be only for an optional rviz visualizer (passed
+`nullptr` here) and a ROS2-topic velocity-command subscriber, whose non-ROS base class
+(`ProceduralMpcMotionManager::setAndScaleVelocityCommand`) we call directly instead. `arena/wbmpc.py` maps the
+q_des/qd_des/kp/kd/ff output onto Arena's existing PD loop almost exactly: `target=q_des`, `kp`, `kd` pass straight
+through, and `tau_ext = kd*qd_des + feed_forward_effort` carries the two terms Arena's own PD loop does not have.
+
+Building against its colcon/ROS 2 Jazzy workspace needed the same category of fixes as labrob: colcon's static
+libraries rebuilt with `-fPIC`, plus Boost and Abseil components the package's own exported CMake config does not
+pull in transitively. A real, separate gotcha: `WBMpcMrtJointController`'s destructor joins its solver thread,
+which never observes a stop signal, so any script that lets it go out of scope normally hangs forever on exit -
+worked around with `os._exit()` right after reading out what's needed (see `bridge/wbmpc/bridge.cpp`'s and
+`arena/wbmpc.py`'s comments for this and the CppAD-codegen-cache-is-relative-to-cwd quirk, same category as
+labrob's relative URDF path).
+
+**Result - standing balance, closed loop, in our own arena's physics:**
+
+| test | duration | fell? | final pelvis height | upright (gravity_b z) | lateral drift |
+|---|---|---|---|---|---|
+| reactive standing, flat ground | 1 s (500 steps @ 500 Hz) | no | 0.789 m (target 0.7925 m) | -0.995 | negligible |
+
+![wb_humanoid_mpc standing in our arena](media/wbmpc_standing.gif)
+
+Because this one does accept a velocity command, running it through the walk/stairs schedules is the natural next
+step (not yet done this pass) - unlike labrob, nothing architectural stands in the way.
+
 ### Not yet integrated
 
-| repository | why it's harder than labrob | status |
+| repository | why it's harder than labrob/wb_humanoid_mpc | status |
 |---|---|---|
-| `wb_humanoid_mpc` | ROS 2 Jazzy, OCS2 (SQP optimal control), ~30-40 min CppAD codegen on first build | not started |
 | `RoMoCo` | ROS 2 Humble, Pinocchio, Clarabel.cpp (Rust) QP solver | not started |
-| `g1_locomotion` | ROS Noetic, linear MPC, built on `opensot` | not started |
+| `g1_locomotion` | ROS Noetic, linear MPC (plain Python/numpy/osqp - see below), whole-body ID via `opensot`
+  (ROS Noetic + Pinocchio + xbot2_interface + CartesI/O); build attempted, hit a cascade of CMake-policy
+  bit-rot in unpinned HEAD dependencies (xbot2_interface needing CMake >=3.20 while OpenSoT's vendored `soth`
+  solver hard-requires policy behavior CMake no longer supports at all) | in progress |
 
-All three couple their control loop to a ROS node graph rather than exposing a plain C++ class like labrob's
-`WalkingManager`, so bridging them the same way would mean either running a ROS master alongside the arena's
-Python process or peeling the control logic out of its ROS wrapper - a materially bigger job than labrob's.
+Both couple their control loop to a ROS node graph (RoMoCo entirely; g1_locomotion only for the whole-body-ID
+stage - its SRBD MPC planner itself, `g1_mpc/scripts/mpc.py`, is plain Python using `osqp` directly, no ROS),
+unlike labrob and wb_humanoid_mpc which both exposed a plain C++ class underneath their ROS wrapper. Bridging
+them the same way would mean either running a ROS master alongside the arena's Python process or peeling the
+control logic out of its ROS wrapper - a materially bigger job than either integrated so far.
 
 ## What could not be run, and why
 
