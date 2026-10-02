@@ -63,6 +63,8 @@ ENV HHCM_FOREST_CLONE_DEFAULT_PROTO=https
 ENV PYTHONUNBUFFERED=1
 
 RUN pip install --upgrade ttictoc hhcm-forest && forest init
+RUN pip install -U "cmake>=3.20"  # upstream xbot2_interface now requires CMake >= 3.20; ubuntu 20.04 apt only ships 3.16.3
+ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
 RUN echo "source $PWD/setup.bash" >> ~/.bashrc
 
 RUN forest add-recipes git@github.com:advrhumanoids/multidof_recipes.git 
@@ -144,6 +146,7 @@ RUN git clone https://github.com/Simple-Robotics/proxsuite.git && \
 
 # opensot
 RUN git clone -b 4.0-devel https://github.com/ADVRHumanoids/OpenSoT.git && \
+    sed -i '/CMAKE_POLICY(SET CMP0048 OLD)/d' OpenSoT/external/soth-ext/CMakeLists.txt && \
     mkdir -p /home/forest_ws/build/OpenSoT && \
     cd /home/forest_ws/build/OpenSoT && \
     source /opt/ros/noetic/setup.bash && \
