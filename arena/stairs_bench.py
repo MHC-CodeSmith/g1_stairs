@@ -112,6 +112,8 @@ def episode(policy, terrain, vx, seconds, seed=0, noise=None, hb=False, video=No
         cmd = Command(v, float(np.clip(-1.0 * st.base_pos[1], -0.3, 0.3)) if v else 0.0,
                       float(np.clip(-2 * heading, -1, 1)))
         arena.set_targets(pol.joints, pol.act(st, cmd), pol.kp, pol.kd)
+        if hasattr(pol, "tau_ext"):   # torque-output adapters (e.g. labrob's WBC/IS-MPC), on top of PD
+            arena.set_external_torque(pol.joints, pol.tau_ext)
         max_z = max(max_z, float(st.base_pos[2]))
         if fall_t is None and arena.fallen(st):
             fall_t = t

@@ -76,6 +76,8 @@ def run(policy_name, terrain="flat", schedule="walk", seconds=20.0, video=None, 
                 cmd = Command(cmd.vx, float(np.clip(-1.0 * st.base_pos[1], -0.3, 0.3)), float(np.clip(-2 * yaw, -1, 1)),
                               cmd.height, cmd.rpy)
             arena.set_targets(pol.joints, pol.act(st, cmd), pol.kp, pol.kd)
+            if hasattr(pol, "tau_ext"):   # torque-output adapters (e.g. labrob's WBC/IS-MPC), on top of PD
+                arena.set_external_torque(pol.joints, pol.tau_ext)
             if waved:
                 arena.set_targets(waved, np.array([arm_wave(j, st.t) for j in waved]),
                                   arena.hold_kp[[arena.joint_names.index(j) for j in waved]],

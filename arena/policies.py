@@ -381,12 +381,17 @@ REGISTRY = {
     "unitree_rl_lab": lambda: _ul().UnitreeLabVelocity(),
     "safe100_cbf": lambda: _s100()("cbf"),
     "safe100_nominal": lambda: _s100()("nominal"),
+    "labrob": lambda: _labrob()(),
 }
 
 
 def _s100():
     from arena.safe100 import Safe100
     return Safe100
+
+def _labrob():
+    from arena.labrob import Labrob
+    return Labrob
 FIXED_CLIP = ["unitree_dance_102", "unitree_gangnam_style"]   # trackers bound to their own clip: make_fixed(name)
 
 
