@@ -281,8 +281,9 @@ class Arena:
         mujoco.mj_forward(self.model, d)
         self.target = q.copy()
         self.kp, self.kd = self.hold_kp.copy(), self.hold_kd.copy()
-        self.t = 0.0
-        self.push = None
+        self.tau_ext = np.zeros(len(self.joint_names))  # raw torque, added on top of the PD term;
+        self.t = 0.0                                    # lets a torque-output controller (e.g. labrob's WBC)
+        self.push = None                                # drive a subset of joints without PD interference
 
     def ground_height(self, x, y):
         """Height of terrain below (x, y) from a downward ray (robot geoms excluded)."""
@@ -304,6 +305,12 @@ class Arena:
         idx = [self.joint_names.index(j) for j in joints]
         self.target[idx], self.kp[idx], self.kd[idx] = q_target, kp, kd
 
+    def set_external_torque(self, joints, tau):
+        """Raw torque for `joints`, added directly to the PD term; zero their kp/kd first (via
+        set_targets or directly) so the PD loop does not fight it."""
+        idx = [self.joint_names.index(j) for j in joints]
+        self.tau_ext[idx] = tau
+
     def step_physics(self, n: int, qd_target=None):
         d = self.data
         for _ in range(n):
@@ -312,7 +319,7 @@ class Arena:
                 d.ctrl[self.act_of_joint[ok]] = self.target[ok]
             else:
                 q, qd = d.qpos[self.qadr], d.qvel[self.vadr]
-                tau = self.kp * (self.target - q) - self.kd * qd
+                tau = self.kp * (self.target - q) - self.kd * qd + self.tau_ext
                 tau = np.clip(tau, -self.tau_limit, self.tau_limit)
                 ok = self.act_of_joint >= 0
                 d.ctrl[self.act_of_joint[ok]] = tau[ok]

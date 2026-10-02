@@ -1,0 +1,88 @@
+ARG BASE_IMAGE=humanoid-base:latest
+FROM ${BASE_IMAGE}
+
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+# everything below installs to /usr/local or /opt and needs root; base.Dockerfile already
+# ends as the non-root user
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libglfw3-dev libjsoncpp-dev libomp-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# mujoco: built from source, not the precompiled release tarball, because only the source
+# CMakeLists exports the mujoco::mujoco target + mujocoConfig.cmake this project's
+# find_package(mujoco REQUIRED) needs.
+# pinned to 3.2.4, the last version satisfying both APIs this code calls: mju_rotVecMat
+# (removed in 3.2.7) and mjv_moveCamera's old `const mjvScene* scn` param (removed in 3.11.0) -
+# no single newer mujoco release has both.
+ARG MUJOCO_VERSION=3.2.4
+RUN git clone --branch ${MUJOCO_VERSION} --depth 1 https://github.com/google-deepmind/mujoco.git /tmp/mujoco \
+    && cmake -S /tmp/mujoco -B /tmp/mujoco/build -DCMAKE_BUILD_TYPE=Release \
+        -DMUJOCO_BUILD_EXAMPLES=OFF -DMUJOCO_BUILD_SIMULATE=OFF -DMUJOCO_BUILD_TESTS=OFF \
+    && cmake --build /tmp/mujoco/build -j"$(nproc)" \
+    && cmake --install /tmp/mujoco/build \
+    && ldconfig && rm -rf /tmp/mujoco
+
+# pinocchio's urdf parser dependencies; not in the base image (base has no ros/robotics libs)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libboost-system-dev libboost-filesystem-dev libboost-serialization-dev \
+        liburdfdom-dev libconsole-bridge-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# pinocchio: apt's ros-*-pinocchio pulls in ros and (as of 4.x) drops headers this project's
+# algorithm includes still expect; built from source instead, same recipe as wb_humanoid_mpc.
+# no collision support (hpp-fcl) or python bindings needed here.
+ARG PINOCCHIO_VERSION=v3.9.0
+RUN git clone --branch ${PINOCCHIO_VERSION} --depth 1 https://github.com/stack-of-tasks/pinocchio.git /tmp/pinocchio \
+    && cd /tmp/pinocchio && git submodule update --init cmake \
+    && cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF \
+        -DBUILD_PYTHON_INTERFACE=OFF -DBUILD_WITH_COLLISION_SUPPORT=OFF \
+    && cmake --build build -j"$(nproc)" && cmake --install build \
+    && ldconfig && rm -rf /tmp/pinocchio
+
+# blasfeo + hpipm (is-mpc's qp solver). both default-install to /opt/{blasfeo,hpipm}, which is
+# exactly what this project's CMakeLists.txt hardcodes (set(blasfeo_LIBRARIES /opt/blasfeo/...)),
+# so no -DCMAKE_INSTALL_PREFIX override needed.
+RUN git clone --depth 1 https://github.com/giaf/blasfeo.git /tmp/blasfeo \
+    && cmake -S /tmp/blasfeo -B /tmp/blasfeo/build -DCMAKE_BUILD_TYPE=Release -DTARGET=X64_AUTOMATIC \
+    && cmake --build /tmp/blasfeo/build -j"$(nproc)" && cmake --install /tmp/blasfeo/build \
+    && rm -rf /tmp/blasfeo
+# pinned before commit d32232f (2025-08-08), which dropped the nsb/nsg params this project's
+# QpSolver.hpp still calls d_dense_qp_dim_set_all with (tag 0.1.4 and newer master both moved on)
+ARG HPIPM_COMMIT=f795184
+RUN git clone https://github.com/giaf/hpipm.git /tmp/hpipm \
+    && cd /tmp/hpipm && git checkout ${HPIPM_COMMIT} \
+    && cmake -B build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build -j"$(nproc)" && cmake --install build \
+    && rm -rf /tmp/hpipm
+
+# qpOASES (whole-body controller's qp solver); static lib by default, matches this project's
+# hardcoded set(qpOASES_LIBRARIES /usr/local/lib/libqpOASES.a)
+RUN git clone --depth 1 https://github.com/coin-or/qpOASES.git /tmp/qpOASES \
+    && cmake -S /tmp/qpOASES -B /tmp/qpOASES/build -DCMAKE_BUILD_TYPE=Release -DQPOASES_BUILD_EXAMPLES=OFF \
+    && cmake --build /tmp/qpOASES/build -j"$(nproc)" && cmake --install /tmp/qpOASES/build \
+    && rm -rf /tmp/qpOASES
+
+# unitree_sdk2: find_package(unitree_sdk2 REQUIRED) is unconditional in this project's
+# CMakeLists even for the sim-only target, though only the (unused here) robot target links it.
+# the repo ships prebuilt cyclonedds (ddsc/ddscxx) + sdk static libs for x86_64, so this is just
+# packaging/install, nothing compiled from cyclonedds source.
+RUN git clone --depth 1 https://github.com/unitreerobotics/unitree_sdk2.git /tmp/unitree_sdk2 \
+    && cmake -S /tmp/unitree_sdk2 -B /tmp/unitree_sdk2/build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=OFF \
+    && cmake --build /tmp/unitree_sdk2/build -j"$(nproc)" && cmake --install /tmp/unitree_sdk2/build \
+    && ldconfig && rm -rf /tmp/unitree_sdk2
+
+# xvfb + software GL: this project always opens a GLFW window (MujocoUI.hpp has no
+# offscreen/headless render path), so a virtual X server is required to run main_sim on
+# a GPU-less or display-less host; llvmpipe software rendering is plenty since we never
+# look at the window, we only read the logged state.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        xvfb libgl1-mesa-dri \
+    && rm -rf /var/lib/apt/lists/*
+
+USER ${USER_UID}
+WORKDIR /workspace/labrob_mujoco_environment
+CMD ["sleep", "infinity"]
