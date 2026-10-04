@@ -537,12 +537,24 @@ A first bridge smoke test (frozen/open-loop state, no physics feedback) ran 500 
 own standing pose with zero NaN/Inf and plausible torques (|tau| <= ~16 Nm); the result above is the real
 closed-loop case, physics and all.
 
-**What this does *not* yet show:** commanded locomotion (vx/vy/wz). `WalkingManager` has no velocity-command input
+**What this does *not* show:** commanded locomotion (vx/vy/wz). `WalkingManager` has no velocity-command input
 at all - its footstep planner (`FootstepPlannerCoop`) triggers from hand/wrist admittance forces, i.e. it is built
 for a human to walk a robot by the hand, not for a joystick. Making it walk on command in this arena would mean
-reverse-engineering that trigger logic to synthesize the forces it expects; not attempted here. It also has not
-been run on stairs, and `arena/run.py`'s shared harness resets every policy to the same base height (0.80 m), which
-is not labrob's own tuned standing pose (0.725112 m) - `tools/labrob_media.py` sets this explicitly instead.
+reverse-engineering that trigger logic to synthesize the forces it expects; not attempted here. `arena/run.py`'s
+shared harness resets every policy to the same base height (0.80 m), which is not labrob's own tuned standing pose
+(0.725112 m) - `tools/labrob_media.py` sets this explicitly instead.
+
+**Full test battery (push, stairs):**
+
+| test | result |
+|---|---|
+| push, 50 N lateral (smallest in our push schedule) | **fails** - falls at t=3.94 s, right after the push |
+| stairs (flat approach, `vx` command attempted) | **cannot attempt** - no velocity-command input exists, robot stays at x~=0 (max\_x=0.000 m) for the whole run, standing stably but never approaching the first step |
+
+Both are the direct consequence of having no commanded locomotion at all: reactive standing alone has no active
+recovery strategy for a lateral push (no stepping response), and with no `vx` there is no way to walk toward the
+stairs in the first place. Neither result is a bridge or integration problem - they are exactly what "reactive
+standing only, no walking" predicts.
 
 ### wb_humanoid_mpc (1X Technologies / Manuel Galliker)
 
@@ -576,8 +588,21 @@ labrob's relative URDF path).
 
 ![wb_humanoid_mpc standing in our arena](media/wbmpc_standing.gif)
 
-Because this one does accept a velocity command, running it through the walk/stairs schedules is the natural next
-step (not yet done this pass) - unlike labrob, nothing architectural stands in the way.
+**Full test battery (walk, push, stairs) - and a stability caveat the 1 s standing result did not show:**
+
+| test | result |
+|---|---|
+| walk, `vx`=0.3 m/s commanded at t=1 s, flat ground | partial: visibly accelerates with the command (vx\_b rises to ~0.75 m/s, then overshoots to 2.6 m/s), covers 0.96 m, **falls at t=1.93 s** |
+| push, 50 N lateral | **falls at t=1.70 s - before the push even fires** (first scheduled push is at t=3 s) |
+| stairs, `vx`=0.5 m/s commanded at t=1.5 s | **falls at t=1.72 s**, max\_x=0.19 m (stairs start at x=1.5 m - never gets close) |
+
+The push-test run falling at t=1.70 s with no push applied yet contradicts the clean 1 s/500-step standing result
+reported above - run back to back under otherwise identical conditions, standing alone is not reliably stable
+over a longer horizon (the earlier result was a true but short window, not a settled steady state). The
+velocity-command response is real (it does accelerate roughly in proportion to the command) but destabilizes
+quickly rather than settling into a walking gait - most likely because the controller's own footstep/contact
+logic was never actually triggered to start stepping within the time it has before falling. Both the walk and
+stairs attempts fail for the same underlying reason as the push test, not a new one.
 
 ### RoMoCo (min-dai)
 
@@ -617,8 +642,22 @@ use successfully - hip_pitch=-0.05, knee=0.1, ankle_pitch=-0.05, base height 0.7
 
 The tightest tracking of the three classical controllers: height barely moves from the very first step (0.7900 to
 0.7904 m, essentially the controller's own setpoint) for the full 8 s, versus labrob's 3.5 mm steady-state error
-and wb_humanoid_mpc's 3.6 mm. `DesiredCommand`'s `Mode::Walking` and its vx/vy/wz channels exist and were never
-exercised this pass (every test used `Mode::Standing`) - the natural next step, as with wb_humanoid_mpc.
+and wb_humanoid_mpc's 3.6 mm.
+
+**Full test battery (walk, push, stairs):**
+
+| test | result |
+|---|---|
+| push, 50 N lateral | **survives** - height holds at 0.790 m through and after the push |
+| push, 100 N lateral (second push, t=6 s) | marginal - still standing through the push, falls at t=7.56 s (~1.5 s after), right at the edge of what counts as "survived" here |
+| walk, `vx`=0.3 m/s commanded at t=1 s, flat ground | correctly switches to `Mode::Walking` (at t~=7.2 s - the state machine has its own CoM-offset-based transition delay, not an instant switch on command) and plans a real footstep (`planned_footstep`), but then **"THE QP in locomotion FAILED!"** repeatedly once stepping starts; falls at t=7.66 s, 0.81 m net travel (mostly accrued before the walking transition) |
+| stairs, `vx`=0.5 m/s commanded at t=1.5 s | same failure mode: transitions to `Mode::Walking` around t=6 s, falls at t=7.46 s, max\_x=0.465 m (stairs start at x=1.5 m - never reached) |
+
+**Standing is solid and the most push-robust of the three; walking is not working yet.** The mode-transition
+logic and footstep planner both run correctly - this is a real attempt at taking a step, not a silent no-op -
+but the whole-body QP solver that should track the planned footstep fails as soon as the robot needs to actually
+shift weight and step, every time. That QP failure, not the transition logic or the planner, is what needs
+fixing before RoMoCo can walk in this arena.
 
 ### Not yet integrated
 
@@ -666,28 +705,28 @@ wb_humanoid_mpc, RoMoCo) are new this pass and were not part of those tables sin
 (`tools/timing_bench.py`'s loop, applied by hand inside each one's own container, since the generic harness
 doesn't have their bridges importable).
 
-| controller | type | DoF controlled | commands it follows | ms/step (CPU) | stairs | standing (this pass) |
-|---|---|---|---|---|---|---|
-| g1_body (ours) | distilled RL | 29 (whole body) | vx, vy, wz, height | 0.216 | ✅ 20 cm | ✅ |
-| g1dwaq_stairs | RL | 29 | vx, vy, wz | 0.198 | ✅ 22 cm (best) | ✅ |
-| agile_vel_height | RL | 29 | vx, vy, wz, height | 0.193 | ❌ | ✅ |
-| sonic | RL (planner + tracker) | 29 | 27 named modes, no raw vx/vy/wz | 6.912 | ❌ | ✅ |
-| sonic_tracking | RL (pure tracker) | 29 | reference clip only | 4.967 | n/a (tracks) | n/a |
-| gmt | RL (tracker) | 23 | reference clip only | 1.669 | n/a | n/a |
-| twist | RL (tracker) | 29 | reference clip only | 0.569 | n/a | n/a |
-| unitree_rl_lab | RL | 29 | vx, vy, wz | 0.069 | ❌ | ✅ |
-| gr00t_wbc | RL | 29 | vx, vy, wz, height | 0.069 | ❌ | ✅ |
-| unitree_rl_gym | RL | 12 (legs) | vx, vy, wz | 0.078 | ❌ | ✅ |
-| mujoco_playground | RL | 29 | vx, vy, wz | 0.052 | ❌ | ⚠ average |
-| safe100_nominal | RL | 29 | fixed forward gait | 0.058 | ❌ (own sim only) | ✅ |
-| safe100_cbf | RL (+ safety filter) | 29 | fixed forward gait | 0.051 | ❌ (own sim only) | ✅ |
-| g1_walk37_baseline | RL | 37 (old G1) | vx, vy, wz | 0.047 | ❌ | ❌ wrong robot |
-| g1_walk37_robust | RL | 37 (old G1) | vx, vy, wz | 0.047 | ❌ | ❌ wrong robot |
-| holosoma_fastsac | RL | 29 | vx, vy, wz | 0.046 | ❌ | ✅ |
-| holosoma_ppo | RL | 29 | vx, vy, wz | 0.044 | ❌ | ✅ |
-| **labrob** | classical: IS-MPC + whole-body QP | 29 (torque-direct) | none (reactive standing only) | 0.314 | not tested | ✅ 8 s, no fall |
-| **wb_humanoid_mpc** | classical: OCS2 whole-body NMPC (SQP) | 29 (23 active, 6 wrists fixed) | vx, vy, wz, height | 0.021 (see note) | not tested | ✅ 1 s, no fall |
-| **RoMoCo** | classical: reduced-order planner + TSC-QP | 12 (legs only) | vx, vy, wz (Mode::Walking, not exercised this pass) | 0.08 | not tested | ✅ 8 s, no fall |
+| controller | type | DoF controlled | commands it follows | ms/step (CPU) | stairs | standing (this pass) | push 50N | walk (vx cmd) |
+|---|---|---|---|---|---|---|---|---|
+| g1_body (ours) | distilled RL | 29 (whole body) | vx, vy, wz, height | 0.216 | ✅ 20 cm | ✅ | — | — |
+| g1dwaq_stairs | RL | 29 | vx, vy, wz | 0.198 | ✅ 22 cm (best) | ✅ | — | — |
+| agile_vel_height | RL | 29 | vx, vy, wz, height | 0.193 | ❌ | ✅ | — | — |
+| sonic | RL (planner + tracker) | 29 | 27 named modes, no raw vx/vy/wz | 6.912 | ❌ | ✅ | — | — |
+| sonic_tracking | RL (pure tracker) | 29 | reference clip only | 4.967 | n/a (tracks) | n/a | — | — |
+| gmt | RL (tracker) | 23 | reference clip only | 1.669 | n/a | n/a | — | — |
+| twist | RL (tracker) | 29 | reference clip only | 0.569 | n/a | n/a | — | — |
+| unitree_rl_lab | RL | 29 | vx, vy, wz | 0.069 | ❌ | ✅ | — | — |
+| gr00t_wbc | RL | 29 | vx, vy, wz, height | 0.069 | ❌ | ✅ | — | — |
+| unitree_rl_gym | RL | 12 (legs) | vx, vy, wz | 0.078 | ❌ | ✅ | — | — |
+| mujoco_playground | RL | 29 | vx, vy, wz | 0.052 | ❌ | ⚠ average | — | — |
+| safe100_nominal | RL | 29 | fixed forward gait | 0.058 | ❌ (own sim only) | ✅ | — | — |
+| safe100_cbf | RL (+ safety filter) | 29 | fixed forward gait | 0.051 | ❌ (own sim only) | ✅ | — | — |
+| g1_walk37_baseline | RL | 37 (old G1) | vx, vy, wz | 0.047 | ❌ | ❌ wrong robot | — | — |
+| g1_walk37_robust | RL | 37 (old G1) | vx, vy, wz | 0.047 | ❌ | ❌ wrong robot | — | — |
+| holosoma_fastsac | RL | 29 | vx, vy, wz | 0.046 | ❌ | ✅ | — | — |
+| holosoma_ppo | RL | 29 | vx, vy, wz | 0.044 | ❌ | ✅ | — | — |
+| **labrob** | classical: IS-MPC + whole-body QP | 29 (torque-direct) | none (reactive standing only) | 0.314 | cannot attempt (no vx) | ✅ 8 s, no fall | ❌ falls t=3.94s | n/a (no vx) |
+| **wb_humanoid_mpc** | classical: OCS2 whole-body NMPC (SQP) | 29 (23 active, 6 wrists fixed) | vx, vy, wz, height | 0.021 (see note) | ❌ falls t=1.72s, max_x=0.19m | ⚠ unstable past ~1.7s (see note) | ❌ falls t=1.70s (before push fires) | ⚠ accelerates then falls t=1.93s |
+| **RoMoCo** | classical: reduced-order planner + TSC-QP | 12 (legs only) | vx, vy, wz | 0.08 | ❌ falls t=7.46s, max_x=0.47m (QP fails on stepping) | ✅ 8 s, no fall | ✅ 50N / ⚠ marginal 100N | ⚠ plans footstep, QP fails on stepping, falls t=7.66s |
 
 Note on wb_humanoid_mpc's 0.021 ms: its own NMPC solve runs continuously in a background thread at its own
 rate, decoupled from the control-step call this number measures (`computeJointControlAction` only reads the
@@ -699,11 +738,19 @@ cost, which happens elsewhere on another thread and isn't charged to any single 
 **What the three classical controllers add that nothing else here has:** torque-level whole-body control from
 first-principles dynamics (Pinocchio rigid-body models + QP solvers), as opposed to a policy that learned an
 implicit controller from reward. None of the 14 RL/tracker policies above can explain *why* a given torque is
-correct the way an MPC/QP formulation can point to its own cost and constraint terms. What they do not (yet)
-add: none of the three has been run on stairs, none has been pushed by `arena/run.py`'s "push" schedule, and
-only wb_humanoid_mpc has had its command-following actually exercised (reactive standing only for labrob;
-RoMoCo's `Mode::Walking` exists in `DesiredCommand` but was never selected - every test here used
-`Mode::Standing`).
+correct the way an MPC/QP formulation can point to its own cost and constraint terms.
+
+**None of the three walks or climbs stairs yet, and the push/walk/stairs results above are not three independent
+failures - they trace back to two underlying problems.** labrob simply has no velocity-command input at all, so
+push and stairs are not applicable rather than failed. wb_humanoid_mpc and RoMoCo both *do* respond to a velocity
+command and both fail once real stepping is required, but for different reasons: wb_humanoid_mpc's standing
+itself turned out not to be reliably stable past about 1.7 s (the earlier 1 s "no fall" result was a true but
+short window, revealed by the push test falling before any push even fired), so there was never really a stable
+platform to step from. RoMoCo's standing is solid and push-robust, its mode-transition logic correctly switches
+to `Mode::Walking`, and its planner produces a real footstep target - it is the whole-body QP itself that fails
+("THE QP in locomotion FAILED!") the moment it has to track that target and actually shift weight onto one foot.
+Of the two, RoMoCo's failure is the narrower, more specific one to chase next: the standing controller, the
+transition logic and the footstep planner are all already working.
 
 ## What could not be run, and why
 

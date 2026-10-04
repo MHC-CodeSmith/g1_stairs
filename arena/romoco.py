@@ -112,7 +112,8 @@ class RoMoCo(ArenaPolicy):
     def act(self, st, cmd):
         q, dq = self._q_dq(st)
         cmd_values = [cmd.vx, cmd.vy, 0.0, 0.0, 0.0, cmd.wz, 0.0, 0.0]
-        out = self._ctrl.update(q.tolist(), dq.tolist(), 0, cmd_values)  # mode 0 = Standing
+        mode = 1 if (cmd.vx or cmd.vy or cmd.wz) else 0  # Mode::Walking=1, Mode::Standing=0
+        out = self._ctrl.update(q.tolist(), dq.tolist(), mode, cmd_values)
 
         q_des = np.asarray(out["joint_positions"])
         qd_des = np.asarray(out["joint_velocities"])
