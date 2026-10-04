@@ -618,6 +618,54 @@ Not pursued further this pass - diagnosing exactly which CMake file wins the sta
 through OpenSoT's and soth-ext's build files line by line, open-ended with no guaranteed payoff. `docker/
 Dockerfile.g1-locomotion` keeps the three fixes already found (they are real and necessary, just not sufficient).
 
+## Full comparison: every controller, every axis
+
+Every policy/tracker/controller this arena has ever run, side by side. "RL/learned" rows repeat numbers from
+the sections above (Skill matrix, Who climbs stairs best); the three classical controllers (labrob,
+wb_humanoid_mpc, RoMoCo) are new this pass and were not part of those tables since they don't run through
+`arena/run.py`'s generic harness - the ms/step numbers for those three were measured the same way
+(`tools/timing_bench.py`'s loop, applied by hand inside each one's own container, since the generic harness
+doesn't have their bridges importable).
+
+| controller | type | DoF controlled | commands it follows | ms/step (CPU) | stairs | standing (this pass) |
+|---|---|---|---|---|---|---|
+| g1_body (ours) | distilled RL | 29 (whole body) | vx, vy, wz, height | 0.216 | ✅ 20 cm | ✅ |
+| g1dwaq_stairs | RL | 29 | vx, vy, wz | 0.198 | ✅ 22 cm (best) | ✅ |
+| agile_vel_height | RL | 29 | vx, vy, wz, height | 0.193 | ❌ | ✅ |
+| sonic | RL (planner + tracker) | 29 | 27 named modes, no raw vx/vy/wz | 6.912 | ❌ | ✅ |
+| sonic_tracking | RL (pure tracker) | 29 | reference clip only | 4.967 | n/a (tracks) | n/a |
+| gmt | RL (tracker) | 23 | reference clip only | 1.669 | n/a | n/a |
+| twist | RL (tracker) | 29 | reference clip only | 0.569 | n/a | n/a |
+| unitree_rl_lab | RL | 29 | vx, vy, wz | 0.069 | ❌ | ✅ |
+| gr00t_wbc | RL | 29 | vx, vy, wz, height | 0.069 | ❌ | ✅ |
+| unitree_rl_gym | RL | 12 (legs) | vx, vy, wz | 0.078 | ❌ | ✅ |
+| mujoco_playground | RL | 29 | vx, vy, wz | 0.052 | ❌ | ⚠ average |
+| safe100_nominal | RL | 29 | fixed forward gait | 0.058 | ❌ (own sim only) | ✅ |
+| safe100_cbf | RL (+ safety filter) | 29 | fixed forward gait | 0.051 | ❌ (own sim only) | ✅ |
+| g1_walk37_baseline | RL | 37 (old G1) | vx, vy, wz | 0.047 | ❌ | ❌ wrong robot |
+| g1_walk37_robust | RL | 37 (old G1) | vx, vy, wz | 0.047 | ❌ | ❌ wrong robot |
+| holosoma_fastsac | RL | 29 | vx, vy, wz | 0.046 | ❌ | ✅ |
+| holosoma_ppo | RL | 29 | vx, vy, wz | 0.044 | ❌ | ✅ |
+| **labrob** | classical: IS-MPC + whole-body QP | 29 (torque-direct) | none (reactive standing only) | 0.314 | not tested | ✅ 8 s, no fall |
+| **wb_humanoid_mpc** | classical: OCS2 whole-body NMPC (SQP) | 29 (23 active, 6 wrists fixed) | vx, vy, wz, height | 0.021 (see note) | not tested | ✅ 1 s, no fall |
+| **RoMoCo** | classical: reduced-order planner + TSC-QP | 12 (legs only) | vx, vy, wz (Mode::Walking, not exercised this pass) | 0.08 | not tested | ⚠ falls at 1.36 s |
+
+Note on wb_humanoid_mpc's 0.021 ms: its own NMPC solve runs continuously in a background thread at its own
+rate, decoupled from the control-step call this number measures (`computeJointControlAction` only reads the
+latest policy out) - not a like-for-like comparison with the other two classical controllers, whose
+`update()`/`UpdateControl()` calls *are* the full solve, synchronously, every control step. Put another way:
+0.021 ms is what driving this controller costs our arena's own step loop; it is not the NMPC's total compute
+cost, which happens elsewhere on another thread and isn't charged to any single step.
+
+**What the three classical controllers add that nothing else here has:** torque-level whole-body control from
+first-principles dynamics (Pinocchio rigid-body models + QP solvers), as opposed to a policy that learned an
+implicit controller from reward. None of the 14 RL/tracker policies above can explain *why* a given torque is
+correct the way an MPC/QP formulation can point to its own cost and constraint terms. What they do not (yet)
+add: none of the three has been run on stairs, none has been pushed by `arena/run.py`'s "push" schedule, and
+only wb_humanoid_mpc has had its command-following actually exercised (reactive standing only for labrob;
+RoMoCo's Mode::Walking exists in `DesiredCommand` but was never selected - every test here used
+Mode::Standing).
+
 ## What could not be run, and why
 
 | repository | status | reason |
