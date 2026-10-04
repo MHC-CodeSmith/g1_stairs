@@ -383,6 +383,7 @@ REGISTRY = {
     "safe100_nominal": lambda: _s100()("nominal"),
     "labrob": lambda: _labrob()(),
     "wbmpc": lambda: _wbmpc()(),
+    "romoco": lambda: _romoco()(),
 }
 
 
@@ -397,6 +398,10 @@ def _labrob():
 def _wbmpc():
     from arena.wbmpc import WbMpc
     return WbMpc
+
+def _romoco():
+    from arena.romoco import RoMoCo
+    return RoMoCo
 FIXED_CLIP = ["unitree_dance_102", "unitree_gangnam_style"]   # trackers bound to their own clip: make_fixed(name)
 
 
