@@ -583,17 +583,40 @@ step (not yet done this pass) - unlike labrob, nothing architectural stands in t
 
 | repository | why it's harder than labrob/wb_humanoid_mpc | status |
 |---|---|---|
-| `RoMoCo` | ROS 2 Humble, Pinocchio, Clarabel.cpp (Rust) QP solver | not started |
 | `g1_locomotion` | ROS Noetic, linear MPC (plain Python/numpy/osqp - see below), whole-body ID via `opensot`
-  (ROS Noetic + Pinocchio + xbot2_interface + CartesI/O); build attempted, hit a cascade of CMake-policy
-  bit-rot in unpinned HEAD dependencies (xbot2_interface needing CMake >=3.20 while OpenSoT's vendored `soth`
-  solver hard-requires policy behavior CMake no longer supports at all) | in progress |
+  (ROS Noetic + Pinocchio + xbot2_interface + CartesI/O) | **blocked**, see below |
+| `RoMoCo` | ROS 2 Humble, Pinocchio, Clarabel.cpp (Rust) QP solver | not started |
 
 Both couple their control loop to a ROS node graph (RoMoCo entirely; g1_locomotion only for the whole-body-ID
 stage - its SRBD MPC planner itself, `g1_mpc/scripts/mpc.py`, is plain Python using `osqp` directly, no ROS),
 unlike labrob and wb_humanoid_mpc which both exposed a plain C++ class underneath their ROS wrapper. Bridging
 them the same way would mean either running a ROS master alongside the arena's Python process or peeling the
 control logic out of its ROS wrapper - a materially bigger job than either integrated so far.
+
+**g1_locomotion is blocked on an upstream build-system bug, not just missing effort.** Its whole-body-ID stage
+needs OpenSoT (hucebot/opensot_docker@g1-locomotion branch's recipe, `docker/Dockerfile.g1-locomotion` here),
+which chains through xbot2_interface, hpp-fcl, pinocchio, osqp, proxQP and more on Ubuntu 20.04/ROS Noetic. Three
+real bugs surfaced building it fresh, each from an unpinned `git clone` (no tag/commit) picking up a dependency's
+current HEAD that has drifted since the recipe was last verified:
+  - `xbot2_interface` HEAD now requires CMake >=3.20; Ubuntu 20.04's apt cmake is 3.16.3. Fixed: `pip install -U
+    cmake`.
+  - That newer CMake then refuses OpenSoT's vendored `soth` QP solver (`external/soth-ext`), which explicitly
+    sets `cmake_policy(SET CMP0048 OLD)` - a policy whose OLD behavior CMake has fully removed, not just
+    deprecated. Fixed: `sed` out that line, plus `CMAKE_POLICY_VERSION_MINIMUM=3.5` globally for the same class of
+    issue elsewhere.
+  - OpenSoT's own `src/constraints/TaskToConstraint.cpp` then fails to compile against xbot2_interface's
+    `config_options.hxx`, which uses `std::any_cast` (C++17) - with the compiler apparently still in a pre-C++17
+    mode despite OpenSoT's top-level `CMakeLists.txt` setting `CMAKE_CXX_STANDARD 20`, and despite forcing
+    `-DCMAKE_CXX_STANDARD=17/20 -DCMAKE_CXX_FLAGS=-std=c++17` on the cmake command line - none of it took effect
+    on that specific compile. The responsible flag or per-target override is somewhere in OpenSoT's own
+    `src/`/`external/soth-ext` CMake files, not yet found; `xbot2_interface`'s header itself has used
+    `std::any_cast` since the file was created (checked `git log`), so this is not new drift on that side - it is
+    a long-standing incompatibility between OpenSoT 4.0-devel and any C++17-or-later xbot2_interface, that the
+    `4.0-devel` branch tag never had to confront before whatever compiler this was last built with.
+
+Not pursued further this pass - diagnosing exactly which CMake file wins the standard flag fight needs reading
+through OpenSoT's and soth-ext's build files line by line, open-ended with no guaranteed payoff. `docker/
+Dockerfile.g1-locomotion` keeps the three fixes already found (they are real and necessary, just not sufficient).
 
 ## What could not be run, and why
 
