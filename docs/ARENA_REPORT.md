@@ -507,8 +507,8 @@ learned model (MPPI); it is trained for the H1, not the G1.
 [GuilhermeAsura/humanoid_repos_eval](https://github.com/GuilhermeAsura/humanoid_repos_eval) evaluated several more
 G1 control stacks outside this arena's original 14, with a particular focus on classical (non-learned) whole-body
 MPC/QP controllers: `wb_humanoid_mpc`, `labrob_mujoco_environment`, `RoMoCo`, and `g1_locomotion`. Rather than just
-cite their results, we integrated two of these for real: their own code, called from our own arena's MuJoCo
-instance, not a re-run of either repo's own standalone demo.
+cite their results, we integrated three of these for real: their own code, called from our own arena's MuJoCo
+instance, not a re-run of any repo's own standalone demo.
 
 ### labrob_mujoco_environment (matteogoddi)
 
@@ -579,19 +579,58 @@ labrob's relative URDF path).
 Because this one does accept a velocity command, running it through the walk/stairs schedules is the natural next
 step (not yet done this pass) - unlike labrob, nothing architectural stands in the way.
 
+### RoMoCo (min-dai)
+
+Reduced-order planner (LIP-based) + whole-body task-space-control QP, solved with Clarabel.cpp (Rust). G1ModelLeg,
+the model this repository ships for the G1, is legs-only: 6 floating-base DoF (x,y,z,yaw,pitch,roll - generalized
+coordinates, not a quaternion) plus the 12 leg joints; arms and waist are not part of it at all, the one adapter
+here besides unitree_rl_gym's that doesn't touch the upper body.
+
+**Integration path:** `bridge/romoco/` wraps `BasicControllerStateMachine::UpdateControl()` directly -
+`romoco_ros/ros_controller_node.hpp`'s `RosControllerNode` owns exactly the same objects
+(`BasicControllerStateMachine`, `OutputBase`, `TorqueSolverBase`) and only adds a ROS proprioception
+subscriber/motor-command publisher around this same call, so no rclcpp::init is needed here either.
+`arena/romoco.py` maps its (joint_positions, joint_velocities, joint_kp, joint_kd, joint_torques_ff) output onto
+Arena's PD+tau_ext exactly as wb_humanoid_mpc's does.
+
+Cleanest build of the three classical controllers: `docker/Dockerfile.romoco` needed one fix (RoMoCo's own
+Dockerfile clones Pinocchio at HEAD with no version pin - even commented out in the source - which hits a
+boost::variant/GCC incompatibility against this environment's Boost; pinned to v3.9.0, the same version already
+proven for labrob). colcon build succeeded in 2m28s with no other issues, and the bridge linked on the first try.
+
+**First result was a real scare, and a useful lesson.** With an initial pose guessed from `config_18dof/
+standing_config.yaml`'s `z_lb`/`z_ub` (0.6-0.68 m, read as a deep crouch: hip_pitch=-0.3, knee=0.6,
+ankle_pitch=-0.3), the closed loop rose from the crouch to a reasonable standing height and then fell at
+t=1.356s. Before suspecting the controller, the same fixed pose was tried with **no controller at all** - a bare
+joint-space PD hold at that exact crouch - and it fell at almost the same time. That ruled out the bridge and
+the adapter: the crouch itself was a poorly-conditioned stance for this arena's G1 model, not something either
+controller caused. Switching to a near-straight stance (the same leg geometry labrob and wb_humanoid_mpc already
+use successfully - hip_pitch=-0.05, knee=0.1, ankle_pitch=-0.05, base height 0.79 m) fixed it completely.
+
+**Result - standing balance, closed loop, in our own arena's physics:**
+
+| test | duration | fell? | final pelvis height | upright (gravity_b z) | lateral drift |
+|---|---|---|---|---|---|
+| reactive standing, flat ground | 8 s (4000 steps @ 500 Hz) | no | 0.7904 m (target 0.79 m) | -0.9996 | 2.8 cm over 8 s |
+
+![RoMoCo standing in our arena](media/romoco_standing.gif)
+
+The tightest tracking of the three classical controllers: height barely moves from the very first step (0.7900 to
+0.7904 m, essentially the controller's own setpoint) for the full 8 s, versus labrob's 3.5 mm steady-state error
+and wb_humanoid_mpc's 3.6 mm. `DesiredCommand`'s `Mode::Walking` and its vx/vy/wz channels exist and were never
+exercised this pass (every test used `Mode::Standing`) - the natural next step, as with wb_humanoid_mpc.
+
 ### Not yet integrated
 
-| repository | why it's harder than labrob/wb_humanoid_mpc | status |
+| repository | why it's harder than the other three | status |
 |---|---|---|
 | `g1_locomotion` | ROS Noetic, linear MPC (plain Python/numpy/osqp - see below), whole-body ID via `opensot`
   (ROS Noetic + Pinocchio + xbot2_interface + CartesI/O) | **blocked**, see below |
-| `RoMoCo` | ROS 2 Humble, Pinocchio, Clarabel.cpp (Rust) QP solver | not started |
 
-Both couple their control loop to a ROS node graph (RoMoCo entirely; g1_locomotion only for the whole-body-ID
-stage - its SRBD MPC planner itself, `g1_mpc/scripts/mpc.py`, is plain Python using `osqp` directly, no ROS),
-unlike labrob and wb_humanoid_mpc which both exposed a plain C++ class underneath their ROS wrapper. Bridging
-them the same way would mean either running a ROS master alongside the arena's Python process or peeling the
-control logic out of its ROS wrapper - a materially bigger job than either integrated so far.
+Its whole-body-ID stage couples to a ROS node graph (its SRBD MPC planner itself, `g1_mpc/scripts/mpc.py`, is
+plain Python using `osqp` directly, no ROS) the way RoMoCo did before being integrated - the difference is
+`opensot` itself does not currently build in this environment at all (see below), so there was no plain C++ class
+to bridge to in the first place.
 
 **g1_locomotion is blocked on an upstream build-system bug, not just missing effort.** Its whole-body-ID stage
 needs OpenSoT (hucebot/opensot_docker@g1-locomotion branch's recipe, `docker/Dockerfile.g1-locomotion` here),
@@ -648,7 +687,7 @@ doesn't have their bridges importable).
 | holosoma_ppo | RL | 29 | vx, vy, wz | 0.044 | ❌ | ✅ |
 | **labrob** | classical: IS-MPC + whole-body QP | 29 (torque-direct) | none (reactive standing only) | 0.314 | not tested | ✅ 8 s, no fall |
 | **wb_humanoid_mpc** | classical: OCS2 whole-body NMPC (SQP) | 29 (23 active, 6 wrists fixed) | vx, vy, wz, height | 0.021 (see note) | not tested | ✅ 1 s, no fall |
-| **RoMoCo** | classical: reduced-order planner + TSC-QP | 12 (legs only) | vx, vy, wz (Mode::Walking, not exercised this pass) | 0.08 | not tested | ⚠ falls at 1.36 s |
+| **RoMoCo** | classical: reduced-order planner + TSC-QP | 12 (legs only) | vx, vy, wz (Mode::Walking, not exercised this pass) | 0.08 | not tested | ✅ 8 s, no fall |
 
 Note on wb_humanoid_mpc's 0.021 ms: its own NMPC solve runs continuously in a background thread at its own
 rate, decoupled from the control-step call this number measures (`computeJointControlAction` only reads the
@@ -663,8 +702,8 @@ implicit controller from reward. None of the 14 RL/tracker policies above can ex
 correct the way an MPC/QP formulation can point to its own cost and constraint terms. What they do not (yet)
 add: none of the three has been run on stairs, none has been pushed by `arena/run.py`'s "push" schedule, and
 only wb_humanoid_mpc has had its command-following actually exercised (reactive standing only for labrob;
-RoMoCo's Mode::Walking exists in `DesiredCommand` but was never selected - every test here used
-Mode::Standing).
+RoMoCo's `Mode::Walking` exists in `DesiredCommand` but was never selected - every test here used
+`Mode::Standing`).
 
 ## What could not be run, and why
 

@@ -36,13 +36,20 @@ ROMOCO_ROOT = os.path.join(TP, "RoMoCo")
 CONFIG_FOLDER = "/home/docker/RoMoCo/install/g1_stack/share/g1_stack/config_18dof"
 LOG_PATH = "/tmp/romoco_logs"
 
-STANDING_POSE = {   # config_18dof: z_lb/z_ub 0.6-0.68m; crouched hip/knee/ankle matching that height
-    "left_hip_pitch_joint": -0.3, "left_hip_roll_joint": 0.0, "left_hip_yaw_joint": 0.0,
-    "left_knee_joint": 0.6, "left_ankle_pitch_joint": -0.3, "left_ankle_roll_joint": 0.0,
-    "right_hip_pitch_joint": -0.3, "right_hip_roll_joint": 0.0, "right_hip_yaw_joint": 0.0,
-    "right_knee_joint": 0.6, "right_ankle_pitch_joint": -0.3, "right_ankle_roll_joint": 0.0,
+STANDING_POSE = {   # near-straight stance (same geometry as labrob/wb_humanoid_mpc's own G1 leg
+    # poses, which are known-good for this exact robot). A first guess using config_18dof's
+    # z_lb/z_ub (0.6-0.68m, a deep crouch: hip_pitch=-0.3, knee=0.6, ankle_pitch=-0.3) turned out to
+    # be a poorly-conditioned stance for this arena's G1+contact model independent of which
+    # controller drives it - a bare fixed-target PD hold at that crouch (no active balance at all)
+    # also fell at nearly the same time RoMoCo's own controller did, which is what exposed this as
+    # a pose problem, not a bridge/controller bug. The same bare-PD sanity check holds near-rigidly
+    # here for >1s and only tips (as a PD hold with no balance feedback eventually must) past 2.4s.
+    "left_hip_pitch_joint": -0.05, "left_hip_roll_joint": 0.0, "left_hip_yaw_joint": 0.0,
+    "left_knee_joint": 0.1, "left_ankle_pitch_joint": -0.05, "left_ankle_roll_joint": 0.0,
+    "right_hip_pitch_joint": -0.05, "right_hip_roll_joint": 0.0, "right_hip_yaw_joint": 0.0,
+    "right_knee_joint": 0.1, "right_ankle_pitch_joint": -0.05, "right_ankle_roll_joint": 0.0,
 }
-STANDING_BASE_Z = 0.65
+STANDING_BASE_Z = 0.79
 
 
 def _quat_to_eulerZYX(q):
