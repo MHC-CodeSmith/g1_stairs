@@ -384,6 +384,8 @@ REGISTRY = {
     "labrob": lambda: _labrob()(),
     "wbmpc": lambda: _wbmpc()(),
     "romoco": lambda: _romoco()(),
+    "g1manip_walker": lambda: _g1manip()(),
+    "wbmpc_centroidal": lambda: _wbmpc_centroidal()(),
 }
 
 
@@ -402,6 +404,14 @@ def _wbmpc():
 def _romoco():
     from arena.romoco import RoMoCo
     return RoMoCo
+
+def _g1manip():
+    from arena.g1manip import G1ManipWalker
+    return G1ManipWalker
+
+def _wbmpc_centroidal():
+    from arena.wbmpc_centroidal import CentroidalMpc
+    return CentroidalMpc
 FIXED_CLIP = ["unitree_dance_102", "unitree_gangnam_style"]   # trackers bound to their own clip: make_fixed(name)
 
 
