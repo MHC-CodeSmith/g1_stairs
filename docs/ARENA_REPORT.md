@@ -502,13 +502,14 @@ learned model (MPPI); it is trained for the H1, not the G1.
   - It drives the robot through exactly these controllers (`UNITREE_G1` uses the WBC, `UNITREE_G1_SONIC` uses SONIC
     tokens). The arena adapters are the layer it would sit on.
 
-## New controllers integrated from humanoid_repos_eval (classical MPC/WBC, no RL)
+## New controllers integrated from humanoid_repos_eval
 
 [GuilhermeAsura/humanoid_repos_eval](https://github.com/GuilhermeAsura/humanoid_repos_eval) evaluated several more
 G1 control stacks outside this arena's original 14, with a particular focus on classical (non-learned) whole-body
-MPC/QP controllers: `wb_humanoid_mpc`, `labrob_mujoco_environment`, `RoMoCo`, and `g1_locomotion`. Rather than just
-cite their results, we integrated three of these for real: their own code, called from our own arena's MuJoCo
-instance, not a re-run of any repo's own standalone demo.
+MPC/QP controllers: `wb_humanoid_mpc`, `labrob_mujoco_environment`, `RoMoCo`, and `g1_locomotion`. Also covered
+one RL stack this arena had not integrated, `g1-manipulation-challenge`. Rather than just cite results, we
+integrated four of these for real: their own code, called from our own arena's MuJoCo instance, not a re-run of
+any repo's own standalone demo (`g1_locomotion` remains blocked, see below).
 
 ### labrob_mujoco_environment (matteogoddi)
 
@@ -604,6 +605,31 @@ quickly rather than settling into a walking gait - most likely because the contr
 logic was never actually triggered to start stepping within the time it has before falling. Both the walk and
 stairs attempts fail for the same underlying reason as the push test, not a new one.
 
+**Fix found: use the centroidal formulation instead.** wb_humanoid_mpc ships two OCS2 formulations in the
+same repo - `humanoid_wb_mpc` (full joint-space dynamics, bridged above) and `humanoid_centroidal_mpc`
+(center-of-mass momentum + full kinematics, lighter). GuilhermeAsura/humanoid_repos_eval's own evaluation
+found the whole-body-dynamics one "thrashes instead of walking" and suspected (unconfirmed) that missing
+real-time thread scheduling was the cause - OCS2 requests `SCHED_FIFO`, which is silently rejected without
+`CAP_SYS_NICE`. **We tested this hypothesis directly** - recreated the container with
+`--cap-add=SYS_NICE --ulimit rtprio=99` (confirmed `ulimit -r` went from 0 to 99) and reran the push test -
+and it made no difference whatsoever: identical result, `fallen_at=1.700s` to the millisecond, both times.
+Real-time scheduling is not the cause; the whole-body-dynamics formulation is genuinely unstable in this
+environment regardless of container permissions.
+
+`bridge/wbmpc_centroidal/` and `arena/wbmpc_centroidal.py` wrap the centroidal formulation the same way -
+`CentroidalMpcInterface -> SqpMpc -> CentroidalMpcMrtJointController`, mirroring
+`humanoid_centroidal_mpc_ros2/src/CentroidalMpcRobotSim.cpp` - and it is categorically more stable:
+
+| test | duration | fell? | final pelvis height | upright (gravity_b z) |
+|---|---|---|---|---|
+| reactive standing, flat ground | 8 s (4000 steps @ 500 Hz) | no | 0.788 m (target 0.7925 m), drifts only 4 mm total | -1.0 |
+
+![wb_humanoid_mpc centroidal standing in our arena](media/wbmpc_centroidal_standing.gif)
+
+This matches GuilhermeAsura's finding exactly and resolves the whole-body-dynamics instability documented
+above: the repository's own centroidal MPC, not the whole-body one, is the formulation to build on here.
+Command-following (walk/push/stairs) for this formulation was not re-run this pass - the natural next step.
+
 ### RoMoCo (min-dai)
 
 Reduced-order planner (LIP-based) + whole-body task-space-control QP, solved with Clarabel.cpp (Rust). G1ModelLeg,
@@ -659,6 +685,46 @@ but the whole-body QP solver that should track the planned footstep fails as soo
 shift weight and step, every time. That QP failure, not the transition logic or the planner, is what needs
 fixing before RoMoCo can walk in this arena.
 
+**Investigated whether command timing was the cause - it is not.** GuilhermeAsura's own scripted demo
+(`g1_main_state_machine`'s `predefined_radio`) requests `Mode::Walking` at t=1s but holds the forward-lean
+command at zero until t=10s - nine seconds of settling before any lean is requested, versus our test
+commanding both close together. Replayed that exact timeline by hand (mode request at t=1s, `Channel::X`
+held at 0 until t=10s, same `config_18dof`/`controller: "qpik"`/`ro_planner: "dcm"` as upstream): the
+`Mode::Walking` transition still only completes around t=7s (the same internal CoM-offset-triggered delay,
+independent of when the lean command arrives), and it still falls at almost exactly the same point, t=7.68s.
+Checking `gravity_b` through the fall confirms a genuine topple, not a mistaken "fallen" reading on a deep
+crouch: it goes from upright (`z~=-0.93`) at t=7.2s to lying on its side (`z~=0.07`, `x~=0.91`) by t=8.0s.
+Command timing is ruled out; the QP failure happens at the walking transition regardless of how gently that
+transition is approached, which narrows the open question to the QP/contact formulation itself, or a
+genuine difference between this arena's contact/friction model and whatever GuilhermeAsura's own working
+demo used (not independently re-measured here, and the config files alone match).
+
+### g1-manipulation-challenge (luckyrobots)
+
+An RL walker (legs/waist/standing/walking/turning) plus a right-arm reacher, trained for a tabletop
+manipulation scene. Only the walker was integrated - the reacher is an arm-IK-style policy for picking up a
+block, out of scope for a locomotion benchmark. Unlike every other controller added this pass, this one
+needed **no bridge, no build, no container at all**: it is plain ONNX inference, runs in the same `g1-arena`
+image as the original 14 RL policies, and `arena/g1manip.py` is a direct transcription of the obs/action
+format already fully documented in the repo's own `run.py` (its own standalone MuJoCo demo) - the same
+offset+scale PD-target pattern every other RL adapter here uses, no reverse-engineering required.
+
+**Full test battery:**
+
+| test | result |
+|---|---|
+| standing, flat ground | 8 s, no fall |
+| walk, `vx`=0.3 m/s | responds to the command but settles at x=0.07 m rather than sustaining continuous motion on flat ground with no target to approach |
+| push, up to 200 N lateral (all four steps of the push schedule) | **survives every push, no fall** - the most push-robust result of anything tested this pass, RL or classical |
+| stairs, `vx`=0.5 m/s | sustained, continuous walking this time (reaches x=1.59 m, right at the first step, x=1.5 m) - falls there, since this walker was never trained to climb stairs |
+
+![g1-manipulation-challenge walker on stairs](media/g1manip_walker_stairs.gif)
+
+A clean, expected result end to end: strong flat-ground walking and push recovery (typical of RL policies
+trained with disturbance randomization), and an honest, non-buggy failure the moment it meets terrain it was
+never trained for.
+
+### Not yet integrated
 ### Not yet integrated
 
 | repository | why it's harder than the other three | status |
@@ -727,6 +793,8 @@ doesn't have their bridges importable).
 | **labrob** | classical: IS-MPC + whole-body QP | 29 (torque-direct) | none (reactive standing only) | 0.314 | cannot attempt (no vx) | ✅ 8 s, no fall | ❌ falls t=3.94s | n/a (no vx) |
 | **wb_humanoid_mpc** | classical: OCS2 whole-body NMPC (SQP) | 29 (23 active, 6 wrists fixed) | vx, vy, wz, height | 0.021 (see note) | ❌ falls t=1.72s, max_x=0.19m | ⚠ unstable past ~1.7s (see note) | ❌ falls t=1.70s (before push fires) | ⚠ accelerates then falls t=1.93s |
 | **RoMoCo** | classical: reduced-order planner + TSC-QP | 12 (legs only) | vx, vy, wz | 0.08 | ❌ falls t=7.46s, max_x=0.47m (QP fails on stepping) | ✅ 8 s, no fall | ✅ 50N / ⚠ marginal 100N | ⚠ plans footstep, QP fails on stepping, falls t=7.66s |
+| **wb_humanoid_mpc (centroidal)** | classical: OCS2 centroidal NMPC (SQP) | 29 (23 active, 6 wrists fixed) | vx, vy, wz, height | n/a | not tested | ✅ 8 s, no fall, 4mm drift | not tested | not tested |
+| **g1manip_walker** | RL | 29 | vx, vy, wz | n/a | ❌ falls at first step, max_x=1.59m (untrained for stairs) | ✅ 8 s, no fall | ✅ up to 200N, no fall | ✅ sustained walking |
 
 Note on wb_humanoid_mpc's 0.021 ms: its own NMPC solve runs continuously in a background thread at its own
 rate, decoupled from the control-step call this number measures (`computeJointControlAction` only reads the
