@@ -695,9 +695,34 @@ independent of when the lean command arrives), and it still falls at almost exac
 Checking `gravity_b` through the fall confirms a genuine topple, not a mistaken "fallen" reading on a deep
 crouch: it goes from upright (`z~=-0.93`) at t=7.2s to lying on its side (`z~=0.07`, `x~=0.91`) by t=8.0s.
 Command timing is ruled out; the QP failure happens at the walking transition regardless of how gently that
-transition is approached, which narrows the open question to the QP/contact formulation itself, or a
-genuine difference between this arena's contact/friction model and whatever GuilhermeAsura's own working
-demo used (not independently re-measured here, and the config files alone match).
+transition is approached.
+
+**Pushed further: two more concrete hypotheses tested and ruled out.** `walking_config.yaml`'s `znom: 0.65`
+sets the walking controller's desired CoM height independently of wherever standing left it (0.79m here) -
+`walking_output_fp.cpp` even has a commented-out line (`// config.znom = updated.y0_UA(zCOM);`) suggesting
+the original authors considered initializing it from the live state instead of a fixed constant. That is a
+genuine ~14cm target discontinuity the instant `Mode::Walking` engages, and a very plausible way to break a
+whole-body QP's small-signal assumptions - so we tried it: edited `znom` to 0.79m to remove the
+discontinuity entirely (took effect immediately through colcon's `--symlink-install` symlinks, no rebuild
+needed). **No change** - falls at the same t=7.68s with the same sudden height collapse, so the Z-target
+jump is not the cause either (reverted).
+
+With the two most plausible high-level hypotheses eliminated, we went one level deeper: `TorqueSolverQPIK`
+(what `controller: "qpik"` actually selects - itself a plain alias for the TSC-QP-IK class, confirmed by
+reading `controller_state_machine.cpp`'s `SelectControllers`) only ever logs a boolean "the QP failed", not
+*why*. Patched one line to print Clarabel's actual `solution.status` and rebuilt just that package (20s,
+`colcon build --packages-select romoco_control`). Across 56 failures in one walk attempt: **49 were
+`PrimalInfeasible`**, 2 `NumericalError`, 3 `InsufficientProgress`, 2 `AlmostSolved`. This is not numerical
+noise or a tolerance issue - the constraint set itself (dynamics equality + stance-foot holonomic
+constraints + friction-cone and torque-limit inequalities) has no feasible solution the moment real stepping
+starts, the overwhelming majority of the time. Torque limits are not the cause either: compared RoMoCo's own
+URDF (`effort="88"` for `hip_pitch`, etc.) against this arena's MJCF (`actuatorfrcrange="-88 88"`) - identical,
+as expected since both ultimately come from the same Unitree description. That leaves the friction-cone
+geometry (`Lfront`/`Lback`/`W`, hardcoded in `walking_config.yaml` rather than measured from either robot
+model) or the stance-foot contact classification itself as the remaining, not yet isolated, suspects - genuine
+primal infeasibility in a constraint block built from one of those two inputs is the most consistent
+explanation for what was observed, but which one (or something else entirely) needs direct inspection of the
+constraint matrices at a failure instant, not yet done.
 
 ### g1-manipulation-challenge (luckyrobots)
 
