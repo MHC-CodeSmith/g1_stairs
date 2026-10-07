@@ -812,6 +812,31 @@ primal infeasibility in a constraint block built from one of those two inputs is
 explanation for what was observed, but which one (or something else entirely) needs direct inspection of the
 constraint matrices at a failure instant, not yet done.
 
+### labrob_mujoco_environment: found the exact line - walking is dead code upstream
+
+Went past the README's TODO note and read `src/WalkingManager.cpp` directly. The standing-to-walking
+transition - the only place `coop_walking_active_` is ever set `true`, and the only call site for
+`WalkingData::startWalkingCoop` - is gated by:
+
+```cpp
+if ((switchWalkingState && false) || (false && t_msec_ == 5000 && !coop_walking_active_))
+```
+
+Both branches are permanently `&& false`'d out - this is not a flag we could set differently, nor a
+mode we are failing to trigger; the block is unreachable in this commit regardless of `reactive_standing_`,
+hand/wrist admittance forces, or anything else a caller does. Two more debug blocks in the same file
+(`if (t_msec_ == 10000 && false)` at line 594, `if (t_msec_ % 500 == 0 && false)` at line 1453) are disabled
+the same way - this reads as a mid-development snapshot with walking-trigger logic deliberately short-circuited
+off, consistent with the README's own "Make the robot walk" TODO item.
+
+One correction to the walking-manager configuration while reading this, worth noting even though it turned out
+not to matter here: `arena/labrob.py` calls `set_reactive_standing(True)`, matching `WalkingManager`'s own
+class-default (`reactive_standing_ = true` in the header) - but upstream's own `main_sim.cpp` (the actual
+walking demo binary) explicitly constructs it with `reactiveStanding = false` instead. Since the transition
+block above is dead code either way, this difference has no effect on whether the robot walks in either
+codebase's current state - but it is a real discrepancy from the demo binary's own configuration, left as-is
+here since fixing it changes nothing observable.
+
 ### It's not just us: walking is an open problem for all three classical repos
 
 Given both wb_humanoid_mpc formulations and RoMoCo failed to produce real walking in this arena, it is worth
