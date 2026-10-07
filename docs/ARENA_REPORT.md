@@ -672,11 +672,41 @@ This is a genuinely better result than the instant-step case - it does not fall 
 forward-velocity command, the first of the three classical controllers' walk attempts to survive the full
 clip. But it still does not actually walk: 6 seconds at a steady 0.3 m/s command should cover roughly 1.8 m if
 it were stepping, and it covers 5 cm - the robot absorbs the velocity command as a small sustained lean/shift
-rather than triggering real footsteps. `setAndScaleVelocityCommand` alone is evidently not sufficient to make
-this OCS2 MPC start a walking gait; there is most likely a separate gait-schedule/mode-switch call (analogous
-to RoMoCo's explicit `Mode::Walking`, see below) that this bridge does not make yet - worth looking for in
-`ProceduralMpcMotionManager` or the gait-scheduling classes `wb_humanoid_mpc_ros2` constructs alongside the
-velocity-command subscriber this bridge already replaced.
+rather than triggering real footsteps.
+
+**Root-caused and attempted a direct fix.** Reading `ProceduralMpcMotionManager`'s source
+(`reference_manager/ProceduralMpcMotionManager.cpp`) found the actual bug: `currentGaitCommand_` and
+`lastGaitCommand_` are both member-initialized to `"stance"`, and the call that actually pushes a new gait
+pattern into the solver (`GaitScheduleUpdater::updateGaitSchedule`) only fires inside
+`if (currentGaitCommand_ != lastGaitCommand_)` - i.e. only *after* `transitionToFasterGait` has already
+returned true once. With both commanded velocity (scaled up to ~0.72 m/s by `reference.info`'s
+`maxDisplacementVelocityX=2.4`) and the stance state's own generous threshold (`maxLinVelCmd=0.1`, effectively
+always satisfied) comfortably exceeded, this *should* fire - and never did: across both the ramped and the
+instant-step tests, the hardcoded `"ProceduralMpcMotionManager: Increasing to gait:"` stdout line (unconditional
+on every transition) never once appeared in the logs. The gait schedule was stuck on `reference.info`'s
+`initialModeSchedule` (`STANCE, STANCE`) for the entire run, regardless of command - the robot was never even
+attempting to step, not failing to step.
+
+Added `force_gait(name, duration)` to `bridge/wbmpc_centroidal/bridge.cpp`, calling the same
+`GaitScheduleUpdater::updateGaitSchedule` static helper directly with a `"walk"` pattern loaded via
+`getGaitMap(gaitFile)`, bypassing the broken automatic promotion entirely - the same category of fix as
+RoMoCo's explicit `Mode::Walking`. It compiles and runs without error, confirming the call itself is valid, but
+it does not produce real walking either:
+
+| when `force_gait("walk")` is called | fell? | max x traveled (8-10 s) | height bobbing (sign of real steps) |
+|---|---|---|---|
+| after `startMpcThread` (mid-run) | no | 0.047 m | none - height stays flat at 0.7889 m throughout |
+| before `startMpcThread` (pre-run) | **yes, falls at t=4.71 s even at vx=0** | n/a | none before falling |
+
+Forcing the schedule after the solver thread is already running leaves the robot just as stuck as before (no
+height bobbing at all means it never actually lifts a foot, despite the mode schedule nominally saying
+"walk"); forcing it before the thread starts actively destabilizes a previously-rock-solid standing case. The
+gait-threshold bug is real and now precisely located, and `force_gait` is a genuine, working escape hatch from
+it - but something past the mode-schedule level (most likely how `GaitSchedule`'s internal time bookkeeping
+reconciles an externally-injected schedule against the MPC's own rolling horizon, or a missing contact-force/
+footstep-target initialization that normally rides along with a schedule change made *through*
+`ProceduralMpcMotionManager` itself rather than around it) is still blocking real stepping. Walking this
+formulation remains unresolved, but the next concrete step is now narrow and specific rather than open-ended.
 
 **Also retested whether RoMoCo's hardcoded friction-cone geometry was simply too conservative.**
 `config_18dof/walking_config.yaml`'s `friction:` block comments its own `Lfront`/`Lback` values as not yet at

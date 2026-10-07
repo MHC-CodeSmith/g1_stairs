@@ -12,6 +12,8 @@
 #include <humanoid_centroidal_mpc/mrt/CentroidalMpcMrtJointController.h>
 #include <humanoid_common_mpc/command/WalkingVelocityCommand.h>
 #include <humanoid_common_mpc/reference_manager/ProceduralMpcMotionManager.h>
+#include <humanoid_common_mpc/gait/GaitScheduleUpdater.h>
+#include <humanoid_common_mpc/gait/ModeSequenceTemplate.h>
 
 #include <robot_model/RobotDescription.h>
 #include <robot_model/RobotJointAction.h>
@@ -36,7 +38,8 @@ class PyCentroidalMpc {
       : robotDescription_(urdfFile),
         interface_(taskFile, urdfFile, referenceFile),
         mpc_(interface_.mpcSettings(), interface_.sqpSettings(), interface_.getOptimalControlProblem(),
-             interface_.getInitializer()) {
+             interface_.getInitializer()),
+        gaitFile_(gaitFile) {
     calcPtr_ = std::make_shared<CentroidalMpcTargetTrajectoriesCalculator>(
         referenceFile, interface_.getMpcRobotModel(), interface_.getPinocchioInterface(),
         interface_.getCentroidalModelInfo(), interface_.mpcSettings().timeHorizon_);
@@ -56,6 +59,24 @@ class PyCentroidalMpc {
 
   void set_velocity_command(double vx, double vy, double height, double wz) {
     motionManagerPtr_->setAndScaleVelocityCommand(WalkingVelocityCommand(vx, vy, height, wz));
+  }
+
+  // Bypasses ProceduralMpcMotionManager's automatic command-threshold gait state machine (stance ->
+  // slow_walk -> walk -> ...), which in our standalone (non-ROS) usage never actually transitions out
+  // of "stance" despite a velocity command well above its own threshold - no "Increasing to gait:"
+  // stdout line (hardcoded into preSolverRun) was ever observed across multiple ramped/instant-step
+  // tests, meaning GaitScheduleUpdater::updateGaitSchedule is never called at all past the initial
+  // reference.info-defined stance-only schedule. This forces a named gait pattern directly via the
+  // same static helper ProceduralMpcMotionManager itself calls internally, independent of that broken
+  // automatic promotion.
+  void force_gait(const std::string& name, double duration) {
+    auto gaitMap = getGaitMap(gaitFile_);
+    auto it = gaitMap.find(name);
+    if (it == gaitMap.end()) {
+      throw std::runtime_error("force_gait: unknown gait '" + name + "' in " + gaitFile_);
+    }
+    auto gaitSchedulePtr = interface_.getSwitchedModelReferenceManagerPtr()->getGaitSchedule();
+    GaitScheduleUpdater::updateGaitSchedule(gaitSchedulePtr, it->second, 0.0, duration);
   }
 
   void start(const py::dict& joint_pos, const std::array<double, 3>& base_pos,
@@ -111,6 +132,7 @@ class PyCentroidalMpc {
   robot::model::RobotDescription robotDescription_;
   CentroidalMpcInterface interface_;
   SqpMpc mpc_;
+  std::string gaitFile_;
   std::shared_ptr<CentroidalMpcTargetTrajectoriesCalculator> calcPtr_;
   std::shared_ptr<ProceduralMpcMotionManager> motionManagerPtr_;
   std::unique_ptr<CentroidalMpcMrtJointController> controllerPtr_;
@@ -123,6 +145,7 @@ PYBIND11_MODULE(wbmpc_centroidal_bridge, m) {
            py::arg("task_file"), py::arg("urdf_file"), py::arg("reference_file"), py::arg("gait_file"))
       .def("set_velocity_command", &PyCentroidalMpc::set_velocity_command, py::arg("vx"), py::arg("vy"),
            py::arg("height"), py::arg("wz"))
+      .def("force_gait", &PyCentroidalMpc::force_gait, py::arg("name"), py::arg("duration") = 1000.0)
       .def("start", &PyCentroidalMpc::start, py::arg("joint_pos"), py::arg("base_pos"), py::arg("base_quat_wxyz"))
       .def("ready", &PyCentroidalMpc::ready)
       .def("update", &PyCentroidalMpc::update, py::arg("joint_pos"), py::arg("joint_vel"), py::arg("base_pos"),
