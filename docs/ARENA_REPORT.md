@@ -628,7 +628,34 @@ environment regardless of container permissions.
 
 This matches GuilhermeAsura's finding exactly and resolves the whole-body-dynamics instability documented
 above: the repository's own centroidal MPC, not the whole-body one, is the formulation to build on here.
-Command-following (walk/push/stairs) for this formulation was not re-run this pass - the natural next step.
+Walk/push/stairs for this formulation were not re-run this pass - the natural next step.
+
+**Crouch test added, using the exact same height schedule as the original 14 policies'
+`crouch` test** (`arena/run.py`'s schedule: height 0.80 to 2 s, 0.62 at 2 s, 0.52 at 6 s, 0.70 at 10 s, 14 s
+total), sent through the same `height` field of `Command` both wbmpc formulations already accept:
+
+| formulation | fell? | min height error at the 0.52 m target | final height (0.70 m target) |
+|---|---|---|---|
+| centroidal | no, 14 s complete | **0.245 m** (never gets below ~0.76 m) | 0.763 m, settling toward but not reaching 0.70 m |
+| whole-body | **falls at t=1.02 s**, before the first height step (t=2 s) even applies | n/a - never reaches the crouch phase | n/a |
+
+The centroidal formulation does not fall under a height command, but it barely crouches: commanded all the
+way down to 0.52 m, it only ever reaches about 0.76 m - a small fraction of the ~0.27 m drop the original
+learned policies manage (g1_body reaches 0.52 m with 3 mm error, gr00t_wbc 0.50 m with 12 mm error, see
+"Locomotion" above). This looks like a conservative CoM-height constraint baked into
+`g1_centroidal_mpc/config/mpc/task.info` rather than a tracking failure - the controller clearly responds to
+the command direction (height drops, then rises back toward 0.70 m) but refuses to go nearly as low as
+requested. The whole-body formulation never gets the chance: it falls on its own well before the first
+scheduled height change, consistent with (if anything worse than) the "falls at 1.70 s" result documented
+above - this run fell even earlier, at 1.02 s, underlining that its instability is run-to-run variable but
+never actually stable past ~1-2 s.
+
+**Rough terrain was not attempted for any of the three classical controllers.** The original 14 policies'
+`rough` test is a sustained walk over a 6 cm-noise height field - it requires the same working, continuous
+forward gait that `stairs` and `walk (vx cmd)` require above, and none of labrob, wb_humanoid_mpc (either
+formulation) or RoMoCo have one yet (see their walk/stairs results above). Attempting `rough` on any of them
+would fail for the identical underlying reason stairs does, not reveal anything new, so it was not run this
+pass; it becomes meaningful once one of them actually walks on flat ground first.
 
 ### RoMoCo (min-dai)
 
