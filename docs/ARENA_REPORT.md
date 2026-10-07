@@ -657,6 +657,37 @@ formulation) or RoMoCo have one yet (see their walk/stairs results above). Attem
 would fail for the identical underlying reason stairs does, not reveal anything new, so it was not run this
 pass; it becomes meaningful once one of them actually walks on flat ground first.
 
+**Checked whether the centroidal formulation walks under a gentler, ramped command instead of an instant
+step.** `wb_humanoid_mpc`'s own README demonstrates its whole-body MPC via an **interactive joystick/GUI**
+("Robot Base Controller GUI" and an Xbox controller), not a programmatic instant step - a human analog stick
+ramps the command up smoothly, which is a materially different input than the single `set_velocity_command(0.3,
+...)` call used in the push/walk/stairs results above. Re-ran the centroidal formulation's standing test with
+`vx` ramped linearly from 0 to 0.3 m/s between t=2s and t=8s (instead of the instant 0->0.3 step), 14 s total:
+
+| test | fell? | max x traveled | final pelvis height |
+|---|---|---|---|
+| ramped vx (0 to 0.3 m/s over 6 s), flat ground | **no - 14 s complete** | 0.051 m | 0.7886 m (steady) |
+
+This is a genuinely better result than the instant-step case - it does not fall at all under a sustained
+forward-velocity command, the first of the three classical controllers' walk attempts to survive the full
+clip. But it still does not actually walk: 6 seconds at a steady 0.3 m/s command should cover roughly 1.8 m if
+it were stepping, and it covers 5 cm - the robot absorbs the velocity command as a small sustained lean/shift
+rather than triggering real footsteps. `setAndScaleVelocityCommand` alone is evidently not sufficient to make
+this OCS2 MPC start a walking gait; there is most likely a separate gait-schedule/mode-switch call (analogous
+to RoMoCo's explicit `Mode::Walking`, see below) that this bridge does not make yet - worth looking for in
+`ProceduralMpcMotionManager` or the gait-scheduling classes `wb_humanoid_mpc_ros2` constructs alongside the
+velocity-command subscriber this bridge already replaced.
+
+**Also retested whether RoMoCo's hardcoded friction-cone geometry was simply too conservative.**
+`config_18dof/walking_config.yaml`'s `friction:` block comments its own `Lfront`/`Lback` values as not yet at
+their stated maximum (`Lfront: 0.1 #max 0.12`, `Lback: -0.04 #max -0.05`; `W` was already at its stated max of
+0.025). Bumped both to their commented maximum and reran the exact walking-QP replay from above - **no
+meaningful change**: falls at t=7.58 s versus the baseline's t=7.78 s, within run-to-run noise. The friction-
+cone margin is not the cause either; confirmed RoMoCo's own `g1_stack/model_files` G1 MJCF uses the identical
+four-corner foot contact geometry (`±0.05/0.12 x, ±0.025/0.03 y`) as this arena's `unitree_rl_gym` G1 model, so
+a foot-geometry mismatch between the two repos is also ruled out. The remaining untested suspect is the
+`Rot_frictionCoef: 0.046` torsional-friction term and the stance-foot contact classification logic itself.
+
 ### RoMoCo (min-dai)
 
 Reduced-order planner (LIP-based) + whole-body task-space-control QP, solved with Clarabel.cpp (Rust). G1ModelLeg,
@@ -845,7 +876,7 @@ doesn't have their bridges importable).
 | **labrob** | classical: IS-MPC + whole-body QP | 29 (torque-direct) | none (reactive standing only) | 0.314 | cannot attempt (no vx) | ✅ 8 s, no fall | ❌ falls t=3.94s | n/a (no vx) |
 | **wb_humanoid_mpc** | classical: OCS2 whole-body NMPC (SQP) | 29 (23 active, 6 wrists fixed) | vx, vy, wz, height | 0.021 (see note) | ❌ falls t=1.72s, max_x=0.19m | ⚠ unstable past ~1.7s (see note) | ❌ falls t=1.70s (before push fires) | ⚠ accelerates then falls t=1.93s |
 | **RoMoCo** | classical: reduced-order planner + TSC-QP | 12 (legs only) | vx, vy, wz | 0.08 | ❌ falls t=7.46s, max_x=0.47m (QP fails on stepping) | ✅ 8 s, no fall | ✅ 50N / ⚠ marginal 100N | ⚠ plans footstep, QP fails on stepping, falls t=7.66s |
-| **wb_humanoid_mpc (centroidal)** | classical: OCS2 centroidal NMPC (SQP) | 29 (23 active, 6 wrists fixed) | vx, vy, wz, height | n/a | not tested | ✅ 8 s, no fall, 4mm drift | not tested | not tested |
+| **wb_humanoid_mpc (centroidal)** | classical: OCS2 centroidal NMPC (SQP) | 29 (23 active, 6 wrists fixed) | vx, vy, wz, height | n/a | not tested | ✅ 8 s, no fall, 4mm drift; crouch: no fall but barely crouches (0.245m err at 0.52m target) | not tested | ⚠ no fall under ramped vx, but barely moves (0.05m in 6s at 0.3m/s - doesn't trigger real stepping) |
 | **g1manip_walker** | RL | 29 | vx, vy, wz | n/a | ❌ falls at first step, max_x=1.59m (untrained for stairs) | ✅ 8 s, no fall | ✅ up to 200N, no fall | ✅ sustained walking |
 
 Note on wb_humanoid_mpc's 0.021 ms: its own NMPC solve runs continuously in a background thread at its own
