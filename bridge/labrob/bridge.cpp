@@ -32,6 +32,16 @@ class PyWalkingManager {
   void set_reactive_standing(bool r) { wm_.setReactiveStanding(r); }
   void set_verbose_coop(bool v) { wm_.setVerboseCoop(v); }
 
+  // Same effect as main_g1.cpp's gamepad B button (handle_gamepad(), "[GAMEPAD] B -> Walking
+  // state switched."): flips the extern switchWalkingState the library polls each update() call.
+  // WalkingManager.cpp:779's `if (switchWalkingState && true)` is a live (not dead-code) block
+  // that, on the next update() while WalkingState::Standing, calls walking_data_.addSteps(...)
+  // to leave the robot's initial "infinite standing step" placeholder and start the IS-MPC
+  // footstep queue - the one standing->walking transition this library actually reaches in its
+  // current committed state (the other one, the hand/wrist-admittance "coop" trigger, is
+  // permanently disabled via `&& false` at WalkingManager.cpp:806, see docs/ARENA_REPORT.md).
+  void trigger_walk() { switchWalkingState = true; }
+
   bool init(const py::dict& joint_pos,
             const py::dict& armatures,
             const std::array<double, 3>& base_pos,
@@ -93,6 +103,7 @@ PYBIND11_MODULE(labrob_bridge, m) {
       .def(py::init<>())
       .def("set_reactive_standing", &PyWalkingManager::set_reactive_standing)
       .def("set_verbose_coop", &PyWalkingManager::set_verbose_coop)
+      .def("trigger_walk", &PyWalkingManager::trigger_walk)
       .def("init", &PyWalkingManager::init,
            py::arg("joint_pos"), py::arg("armatures"), py::arg("base_pos"), py::arg("base_quat_wxyz"))
       .def("update", &PyWalkingManager::update,

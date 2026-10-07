@@ -837,6 +837,32 @@ block above is dead code either way, this difference has no effect on whether th
 codebase's current state - but it is a real discrepancy from the demo binary's own configuration, left as-is
 here since fixing it changes nothing observable.
 
+**A second, genuinely live transition exists - and we wired it up and tested it.** `WalkingManager.cpp:779`
+has `if (switchWalkingState && true)` (not `&& false`): on the next `update()` call while
+`WalkingState::Standing`, it calls `walking_data_.addSteps(...)` and leaves the "infinite standing step"
+placeholder, starting the IS-MPC footstep queue for real. `switchWalkingState` is the same extern global this
+library's own `main_g1.cpp` (the real-hardware binary, not the sim demo) flips from a gamepad handler -
+literally "press B": `if (gamepad_.B.pressed) { ...; switchWalkingState = true; }`. `main_sim.cpp` (what
+GuilhermeAsura's own `justfile` actually runs for the walking demo) never sets it, so even upstream's own sim
+never reaches this path either - but nothing stops us from doing what the gamepad does.
+
+Added `trigger_walk()` to `bridge/labrob/bridge.cpp`, setting `switchWalkingState = true` once (the pybind11
+equivalent of the B button), and reran the standing and push tests with it fired at t=2s:
+
+| test | fell? | max x traveled | notes |
+|---|---|---|---|
+| standing + trigger_walk() at t=2s, 12 s total | no | 0.102 m | leaves the Standing placeholder, height settles ~0.725->0.722 m (5 mm), x advances to ~0.10 m then oscillates in place (0.09-0.10 m) rather than continuing to translate |
+| push 50 N + trigger_walk() at t=2s, push at t=5.0-5.3s | **falls at t=5.56 s** | n/a | still fails the push, now from an actively-stepping (not purely static) state |
+
+This is a real, measurable difference from pure reactive standing - the robot leaves its initial placeholder
+step and the IS-MPC visibly starts planning around a live footstep queue rather than one frozen step - but it
+is not forward walking: there is no velocity-command input anywhere in this live code path (`handle_gamepad`
+has no joystick-axis-to-velocity mapping either, only the B/X/Y/A buttons), so whatever IS-MPC does once
+`switchWalkingState` flips appears to be a fixed, roughly-in-place stepping pattern, not a commanded walk. The
+10 cm of drift is consistent with the planner re-centering around its own default stance rather than
+travelling anywhere a caller controls. Push robustness is not meaningfully improved by this (falls 1.6 s after
+the earlier reactive-standing-only result's 3.94 s, not closing the gap to any RL policy's 50 N+ survival).
+
 ### It's not just us: walking is an open problem for all three classical repos
 
 Given both wb_humanoid_mpc formulations and RoMoCo failed to produce real walking in this arena, it is worth
