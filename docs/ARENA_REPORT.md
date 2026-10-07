@@ -863,6 +863,33 @@ has no joystick-axis-to-velocity mapping either, only the B/X/Y/A buttons), so w
 travelling anywhere a caller controls. Push robustness is not meaningfully improved by this (falls 1.6 s after
 the earlier reactive-standing-only result's 3.94 s, not closing the gap to any RL policy's 50 N+ survival).
 
+**Pushed further: re-triggering repeatedly instead of once produces real forward walking.** A single
+`trigger_walk()` call only ever flips the state machine through one Standing->(something)->Standing cycle,
+which is why it plateaus at ~10 cm. The `WalkingManager.cpp:779` block re-arms itself every time
+`WalkingState` cycles back to `Standing` (it calls `addSteps` from the robot's *current* pose each time) -
+so calling `trigger_walk()` again on every such cycle, rather than once, keeps feeding it a new displaced
+starting pose each time, and the IS-MPC genuinely walks forward on it:
+
+| trigger period | fell? | fall time | distance covered before falling |
+|---|---|---|---|
+| once, at t=2s | no (12 s complete) | - | 0.10 m, then holds in place |
+| every 0.8 s from t=2s | yes | t=9.82 s | **~0.45 m** of continuous forward progress while upright (x climbs steadily from 0 to 0.45 m between t=8.4-9.8s, not a single jump) |
+| every 1.5 s from t=2s | yes | t=10.12 s | same pattern, ~0.45 m before falling |
+
+![labrob walking forward via repeated trigger_walk()](media/labrob_walk_trigger.gif)
+
+This is the first of the three classical controllers added this pass to produce genuine, visible, continuous
+forward locomotion in this arena - not a push-recovery shuffle, not an in-place correction, an actual walking
+gait covering real distance while upright for several seconds. It still isn't a finished result: it falls
+around t~10s regardless of trigger period (both 0.8s and 1.5s periods produce nearly identical trajectories,
+suggesting the fall is driven by something structural - most likely the same "infinite standing step" logic
+eventually running out of runway, or accumulated footstep-queue inconsistency from repeatedly re-triggering a
+mechanism that was never designed to be called this way - rather than the trigger rate itself). There is still
+no velocity command anywhere in this path, so direction and speed are whatever the IS-MPC's own default step
+produces, not something this adapter controls. But "walks forward for ~7 seconds before falling" is a
+substantially different, better answer than "cannot attempt" - achieved by doing exactly what the real-hardware
+binary's gamepad B button does, repeated instead of once.
+
 ### It's not just us: walking is an open problem for all three classical repos
 
 Given both wb_humanoid_mpc formulations and RoMoCo failed to produce real walking in this arena, it is worth
