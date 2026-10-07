@@ -812,6 +812,41 @@ primal infeasibility in a constraint block built from one of those two inputs is
 explanation for what was observed, but which one (or something else entirely) needs direct inspection of the
 constraint matrices at a failure instant, not yet done.
 
+### It's not just us: walking is an open problem for all three classical repos
+
+Given both wb_humanoid_mpc formulations and RoMoCo failed to produce real walking in this arena, it is worth
+checking whether this is specific to our integration or a broader, already-known limitation of the upstream
+projects themselves. It is the latter, confirmed independently for all three:
+
+- **labrob_mujoco_environment's own README lists "Make the robot walk" as TODO item #0.** The repository's
+  own documentation states only that "the robot was tasked to walk forward for an arbitrary number of steps,"
+  with no working command-line interface or API to actually trigger it - matching exactly what this arena's
+  integration found (no velocity-command input exists at all, only hand/wrist admittance-triggered footsteps).
+  This was never a finished feature upstream, not something this integration broke.
+
+- **RoMoCo's own GitHub issue #1, "How to make robot walk?"** (opened 2025-12-19 by a different user,
+  `bymbhaskar`, still open with zero replies as of this pass): "Now when I run the simulation, robot
+  immediately falls. Is there a sample code for robot to make it walk?" - the identical symptom (falls when
+  attempting to walk) reported independently by someone else running RoMoCo's own example, not this arena's
+  bridge. See [min-dai/RoMoCo#1](https://github.com/min-dai/RoMoCo/issues/1).
+
+- **wb_humanoid_mpc has multiple open issues describing the same instability on other robots and setups.**
+  [Issue #29](https://github.com/manumerous/wb_humanoid_mpc/issues/29) (a different user, after pulling a
+  recent MuJoCo update): "Robot constantly falls and crashes repeatedly... Forward/backward movement commands
+  don't work - robot just keeps falling." [Issue #36](https://github.com/manumerous/wb_humanoid_mpc/issues/36),
+  "Odd and unstable walking gait... using Centroidal MPC," reports the same centroidal formulation this arena
+  found stable-but-non-walking failing to produce a clean gait on a different robot (Kbot) - still open, no
+  confirmed fix. One candidate explanation raised there - a foot-contact-frame orientation mismatch
+  ([issue #35](https://github.com/manumerous/wb_humanoid_mpc/issues/35)) - was checked against G1 specifically
+  and ruled out: that issue's own author notes "for the G1 the contact frame orientation matches the last
+  joint frame so only a translation is needed," i.e. G1 does not have the rotation bug being discussed there.
+
+**Conclusion:** none of the three classical controllers added this pass have a publicly working, reproducible
+walking demo outside their own authors' hands (and in wb_humanoid_mpc's case, not even reliably there, per its
+own open issues). The instability this arena documented above is consistent with - not an outlier against -
+what these projects' own user bases are independently reporting on entirely different machines, robots and
+MuJoCo versions.
+
 ### g1-manipulation-challenge (luckyrobots)
 
 An RL walker (legs/waist/standing/walking/turning) plus a right-arm reacher, trained for a tabletop
