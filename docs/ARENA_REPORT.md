@@ -875,6 +875,18 @@ projects themselves. It is the latter, confirmed independently for all three:
   integration found (no velocity-command input exists at all, only hand/wrist admittance-triggered footsteps).
   This was never a finished feature upstream, not something this integration broke.
 
+- **Checked RoMoCo's `StepWidth`/`StepTime` command channels against its own interactive demo's defaults.**
+  `arena/romoco.py` sends `command_values = [vx, vy, 0, 0, 0, wz, 0, 0]` - the last two zeros land on
+  `Channel::StepWidth` (index 6) and `Channel::StepTime` (index 7), per `biped_commands.hpp`'s
+  `DesiredChannel` enum. GuilhermeAsura's own `justfile` runs `romoco-sim`/`romoco-sim-sync`, which use
+  `romoco_screen_radio`'s interactive GUI (`ConvertScreenRadioToDesiredCommand`, confirmed to map these same
+  two channels from slider positions) rather than our scripted replay - raising the question of whether a
+  human operator's slider defaults differ from our hardcoded zeros. They do not:
+  `radio_slider_gui.hpp` initializes `sliderStepTime_value = 0` and `sliderStepWidth_value = 0` as the GUI's
+  own starting state, identical to what this arena sends before anyone touches those sliders. Same commit
+  (`b68e80c`, confirmed identical to ours via `.gitmodules`), same channel defaults - ruled out as a source of
+  divergence from GuilhermeAsura's own setup.
+
 - **RoMoCo's own GitHub issue #1, "How to make robot walk?"** (opened 2025-12-19 by a different user,
   `bymbhaskar`, still open with zero replies as of this pass): "Now when I run the simulation, robot
   immediately falls. Is there a sample code for robot to make it walk?" - the identical symptom (falls when
