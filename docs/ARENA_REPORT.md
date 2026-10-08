@@ -908,6 +908,24 @@ longer used, since it was calling the wrong mechanism entirely and its larger di
 exploiting a branch that was never meant to produce locomotion. This smaller-but-correct result is the one to
 trust: it is driven by the same code path GuilhermeAsura's own working demo uses.
 
+**The fall itself is a torque-command explosion, not a controlled topple - logged it directly.** Instrumented
+`pol.tau_ext` (the raw torque this bridge hands to `Arena.tau_ext`, before Arena's own actuator-limit clip) at
+500 Hz through the fall: it sits at a sane ~34 Nm through t=11.238s, then at t=11.258s - one 20 ms control step
+later - jumps to **2702 Nm**, followed by 1500-6700 Nm spikes for the next half-second while the robot's
+vertical velocity swings to +4.3 m/s (a genuine launch, not a topple) before crashing back down. This is a
+numerical blow-up in `WholeBodyController`'s QP, not ordinary falling-over dynamics - and it matches
+GuilhermeAsura's own README verbatim: *"Push recovery tested and doesn't work: any scripted external force,
+down to a light 8N nudge, destabilizes the controller into a physics-breaking NaN rather than a fall or
+recovery."* We're seeing the same fragility, just triggered by the walking transition's own internal dynamics
+rather than an external push - consistent with, not contradicting, his report. Arena's actuator-limit clip
+(`arena/world.py`'s `tau_limit`, matching the G1's real `actuatorfrcrange`) is already applied before anything
+reaches MuJoCo, so what the simulator actually executes is clipped - the controller is still commanding
+sustained near-max torque in a bad direction for long enough to visibly launch the robot regardless. This is a
+third-party WBC numerics bug, not something tunable from this arena's side; RoMoCo's own fall (the QP
+documented above) looks different in character - a ~0.8s controlled-looking topple with torques chattering
+between 0 and a 139 Nm ceiling rather than a single explosive spike - consistent with genuine constraint
+infeasibility producing degenerate-but-bounded solutions, not the same failure mode as labrob's blow-up.
+
 ### It's not just us: walking is an open problem for all three classical repos
 
 Given both wb_humanoid_mpc formulations and RoMoCo failed to produce real walking in this arena, it is worth
