@@ -1352,6 +1352,26 @@ fails outright in 2 of 5 runs; it walks 0.8-2.0 m on flat ground before falling 
 failure after a few steps is not yet root-caused. Earlier single-run numbers in this report for this
 formulation should be read as examples from these distributions, not as point estimates.
 
+### Looking for the cause of the fall after a few steps (centroidal) - three hypotheses, all ruled out
+
+After the time fix the centroidal formulation still falls 7-9.5 s into a flat walk. Checked, in order:
+
+1. **Solver thread dying or diverging.** Grepped a full flat-walk log: zero "The solver has failed to update!!"
+   lines (the message that would end the MPC thread and freeze the policy), no NaN/infeasibility output. The
+   thread keeps running; it only reports "MPC loop running slow" (40 times in one run), i.e. it falls behind its
+   target rate.
+2. **Policy staleness because the arena loop outruns the MPC.** If true, giving the MPC more solves per simulated
+   second should help. Ran the arena at 0.25x real time (3 trials): it got *worse* - falls at 2.6-3.0 s, 0.00-0.27 m.
+   (Real-time 1.0x pacing, tested earlier, also got worse; unpaced is the best of the three, for reasons not
+   understood.) Ruled out as the cause, and it means wall-clock coupling here cuts the other way from the obvious guess.
+3. **Model mismatch from the Dex3 hands.** The arena robot is the 43-motor G1 with Dex3 hands; all three classical
+   controllers model the hand-less G1, so extra wrist mass could bias the CoM. Reran 5 flat-walk trials on the
+   hand-less G1 (`Arena(robot_xml=G1_29_XML)`): falls at 7.56 / 6.56 / 9.76 / 3.83 / 7.98 s, distance
+   0.76 / 0.51 / 1.43 / 0.94 / 1.28 m - no better than with hands (7.05-9.5 s, 0.77-2.01 m). Ruled out for this
+   controller. (Not rerun for labrob or RoMoCo.)
+
+The cause of the fall after a few steps is therefore still unknown for the centroidal formulation.
+
 ## Stairs test, retried for the two controllers that now actually walk
 
 With labrob and wb_humanoid_mpc centroidal both producing real forward steps after the fixes documented
