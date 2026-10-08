@@ -1468,3 +1468,21 @@ docker run --rm --gpus '"device=1"' -v $PWD:/workspace/g1_stairs g1-mjlab tools/
 - **Single runs.** The step sweep and the HumanoidBench course use one run per setting. The Safe100 staircase uses
   16 runs.
 - **No terrain sensing.** Policies get only proprioception and commands, as in their own deployments.
+
+## wb_humanoid_mpc centroidal: deterministic lockstep experiment
+
+To remove wall-clock nondeterminism, the MPC solver thread was patched to run in lockstep with the simulator
+(patches/wbmpc_centroidal_lockstep.patch; harness tools/wbmpc_centroidal_lockstep.py <vx> <steps_per_solve>).
+One solve is granted every N control steps (dt=0.002), flat terrain, 30 s.
+
+| steps/solve | vx | result |
+|---|---|---|
+| 5, 6, 8, 9, 12, 16, 18, 20, 25, 26 | 0.12 | fell (0.8-8 s) |
+| 19 | 0.12 | 1 run walked 8.8 m; 2 repeats fell at ~1.0 s |
+| 23 | 0.12 | 1 run walked 7.1 m (not repeated) |
+| 24 | 0.12 | 2 of 3 walked 30 s (7.4-8.4 m); 1 fell at 2.1 s |
+| 24 | 0.18 / 0.30 | 4 of 4 fell at ~1.2-1.3 s (yaw spin) |
+
+Conclusion: lockstep is not fully deterministic (the multithreaded solver still varies), and sustained walking is a
+fragile region (about 2/3 at vx=0.12 with 24 steps/solve), not a fix. The yaw-spin fall at step onset remains
+unresolved and is reported as such. No robust walking claim is made for this controller.
