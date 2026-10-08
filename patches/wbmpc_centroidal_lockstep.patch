@@ -1,0 +1,57 @@
+diff --git a/humanoid_nmpc/humanoid_centroidal_mpc/include/humanoid_centroidal_mpc/mrt/CentroidalMpcMrtJointController.h b/humanoid_nmpc/humanoid_centroidal_mpc/include/humanoid_centroidal_mpc/mrt/CentroidalMpcMrtJointController.h
+index 8961ffd..4d8066e 100644
+--- a/humanoid_nmpc/humanoid_centroidal_mpc/include/humanoid_centroidal_mpc/mrt/CentroidalMpcMrtJointController.h
++++ b/humanoid_nmpc/humanoid_centroidal_mpc/include/humanoid_centroidal_mpc/mrt/CentroidalMpcMrtJointController.h
+@@ -72,6 +72,13 @@ class CentroidalMpcMrtJointController final : public ::robot::model::ControlBase
+ 
+   void startMpcThread(const ::robot::model::RobotState& initRobotState);
+ 
++  // Deterministic stepping for offline/benchmark use: when enabled, the solver thread runs exactly one
++  // advanceMpc() per grantSolve() instead of free-running against the wall clock, and solveCount() reports
++  // how many have completed. Not part of upstream.
++  void setLockstep(bool on) { lockstep_ = on; }
++  void grantSolve() { permits_++; }
++  uint64_t solveCount() const { return solveCount_.load(); }
++
+  private:
+   /**
+    * Handles the MPC solver thread.
+@@ -101,6 +108,9 @@ class CentroidalMpcMrtJointController final : public ::robot::model::ControlBase
+   bool realtime_;  // True if MPC is to be run as fast as possible
+ 
+   std::atomic_bool terminateThread_{false};
++  std::atomic_bool lockstep_{false};
++  std::atomic<int64_t> permits_{0};
++  std::atomic<uint64_t> solveCount_{0};
+   std::jthread solver_worker_;
+ 
+   std::shared_ptr<DummyObserver> visualizerPtr_;
+diff --git a/humanoid_nmpc/humanoid_centroidal_mpc/src/mrt/CentroidalMpcMrtJointController.cpp b/humanoid_nmpc/humanoid_centroidal_mpc/src/mrt/CentroidalMpcMrtJointController.cpp
+index e13f88e..9d01385 100644
+--- a/humanoid_nmpc/humanoid_centroidal_mpc/src/mrt/CentroidalMpcMrtJointController.cpp
++++ b/humanoid_nmpc/humanoid_centroidal_mpc/src/mrt/CentroidalMpcMrtJointController.cpp
+@@ -244,6 +244,13 @@ void CentroidalMpcMrtJointController::solverWorker() {
+   while (true) {
+     auto targetTimeForNextIteration = std::chrono::steady_clock::now() + std::chrono::microseconds(mpcDeltaTMicroSeconds_);
+ 
++    if (lockstep_.load()) {
++      while (lockstep_.load() && permits_.load() <= 0) {
++        std::this_thread::sleep_for(std::chrono::microseconds(200));
++      }
++      if (lockstep_.load()) permits_--;
++    }
++
+     mcpMrtInterface_.advanceMpc();
+ 
+     // Publish if Policy has been updated
+@@ -254,7 +261,9 @@ void CentroidalMpcMrtJointController::solverWorker() {
+ 
+     // std::cerr << "MPC policy computed!" << std::endl;
+ 
+-    if (!realtime_) {
++    solveCount_++;
++
++    if (!realtime_ && !lockstep_.load()) {
+       auto currentTime = std::chrono::steady_clock::now();
+       if (currentTime > targetTimeForNextIteration) {
+         auto delay = std::chrono::duration_cast<std::chrono::microseconds>(currentTime - targetTimeForNextIteration).count();

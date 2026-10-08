@@ -87,6 +87,9 @@ class PyCentroidalMpc {
   }
 
   bool ready() const { return controllerPtr_->ready(); }
+  void set_lockstep(bool on) { controllerPtr_->setLockstep(on); }
+  void grant_solve() { controllerPtr_->grantSolve(); }
+  uint64_t solve_count() const { return controllerPtr_->solveCount(); }
 
   py::dict update(const py::dict& joint_pos, const py::dict& joint_vel, const std::array<double, 3>& base_pos,
                    const std::array<double, 4>& base_quat_wxyz, const std::array<double, 3>& lin_vel,
@@ -158,6 +161,9 @@ PYBIND11_MODULE(wbmpc_centroidal_bridge, m) {
       .def("force_gait", &PyCentroidalMpc::force_gait, py::arg("name"), py::arg("duration") = 1000.0)
       .def("start", &PyCentroidalMpc::start, py::arg("joint_pos"), py::arg("base_pos"), py::arg("base_quat_wxyz"))
       .def("ready", &PyCentroidalMpc::ready)
+      .def("set_lockstep", &PyCentroidalMpc::set_lockstep)
+      .def("grant_solve", &PyCentroidalMpc::grant_solve)
+      .def("solve_count", &PyCentroidalMpc::solve_count)
       .def("update", &PyCentroidalMpc::update, py::arg("joint_pos"), py::arg("joint_vel"), py::arg("base_pos"),
            py::arg("base_quat_wxyz"), py::arg("lin_vel"), py::arg("ang_vel"), py::arg("t"));
 }
