@@ -29,11 +29,12 @@ using namespace romoco;
 class PyRoMoCo {
  public:
   PyRoMoCo(const std::string& config_folder, const std::string& log_path)
-      : robot_(std::make_shared<robot::G1ModelLeg>(config_folder)),
+      : robot_((SimpleTimer::SetExternalTime(0.0), std::make_shared<robot::G1ModelLeg>(config_folder))),
         controller_(config_folder, log_path, robot_) {}
 
   py::dict update(const std::array<double, 18>& q, const std::array<double, 18>& dq, int mode,
-                   const std::array<double, 8>& command_values) {
+                   const std::array<double, 8>& command_values, double t) {
+    SimpleTimer::SetExternalTime(t);
     Eigen::VectorXd qv(18), dqv(18);
     for (int i = 0; i < 18; ++i) {
       qv(i) = q[i];
@@ -58,6 +59,14 @@ class PyRoMoCo {
     return result;
   }
 
+  std::vector<double> com_debug(const std::array<double, 18>& q, const std::array<double, 18>& dq) {
+    Eigen::VectorXd qv(18), dqv(18);
+    for (int i = 0; i < 18; ++i) { qv(i) = q[i]; dqv(i) = dq[i]; }
+    robot_->UpdateAll(qv, dqv);
+    auto k = robot_->com_kinematics();
+    return {k.position.x(), k.position.y(), k.position.z(), k.velocity.x(), k.velocity.y(), k.velocity.z(), robot_->mass()};
+  }
+
  private:
   std::shared_ptr<robot::RobotBasePinocchio> robot_;
   BasicControllerStateMachine controller_;
@@ -69,5 +78,6 @@ PYBIND11_MODULE(romoco_bridge, m) {
   m.doc() = "pybind11 bridge to RoMoCo's BasicControllerStateMachine (reduced-order planner + TSC-QP)";
   py::class_<PyRoMoCo>(m, "RoMoCo")
       .def(py::init<const std::string&, const std::string&>(), py::arg("config_folder"), py::arg("log_path"))
-      .def("update", &PyRoMoCo::update, py::arg("q"), py::arg("dq"), py::arg("mode"), py::arg("command_values"));
+      .def("com_debug", &PyRoMoCo::com_debug, py::arg("q"), py::arg("dq"))
+      .def("update", &PyRoMoCo::update, py::arg("q"), py::arg("dq"), py::arg("mode"), py::arg("command_values"), py::arg("t") = 0.0);
 }

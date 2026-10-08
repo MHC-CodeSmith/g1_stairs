@@ -76,6 +76,9 @@ def _body_rate_to_eulerZYX_rate(omega_body, yaw, pitch, roll):
     return yaw_dot, pitch_dot, roll_dot
 
 
+FILTER_ALPHA = float(os.environ.get("ROMOCO_ALPHA", "1.0"))  # 1.0 = off
+
+
 class RoMoCo(ArenaPolicy):
     name, joints = "romoco", LEGS12
     control_dt = 1.0 / 500
@@ -113,12 +116,18 @@ class RoMoCo(ArenaPolicy):
         q, dq = self._q_dq(st)
         cmd_values = [cmd.vx, cmd.vy, 0.0, 0.0, 0.0, cmd.wz, 0.0, 0.0]
         mode = 1 if (cmd.vx or cmd.vy or cmd.wz) else 0  # Mode::Walking=1, Mode::Standing=0
-        out = self._ctrl.update(q.tolist(), dq.tolist(), mode, cmd_values)
+        out = self._ctrl.update(q.tolist(), dq.tolist(), mode, cmd_values, float(st.t))
 
         q_des = np.asarray(out["joint_positions"])
         qd_des = np.asarray(out["joint_velocities"])
         self.kp = np.asarray(out["joint_kp"])
         self.kd = np.asarray(out["joint_kd"])
         ff = np.asarray(out["joint_torques_ff"])
-        self.tau_ext = self.kd * qd_des + ff
-        return q_des
+        tau = self.kd * qd_des + ff
+        if getattr(self, "_filt", None) is None:
+            self._filt = (q_des.copy(), tau.copy())
+        qf, tf = self._filt
+        qf += FILTER_ALPHA * (q_des - qf)
+        tf += FILTER_ALPHA * (tau - tf)
+        self.tau_ext = tf.copy()
+        return qf.copy()

@@ -1,0 +1,59 @@
+diff --git a/src/romoco_planner/src/hlip.cpp b/src/romoco_planner/src/hlip.cpp
+index 904becb..f2fde87 100644
+--- a/src/romoco_planner/src/hlip.cpp
++++ b/src/romoco_planner/src/hlip.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include <romoco_planner/hlip.hpp>
+ #include <iostream>
++#include <cstdlib>
+ #include <romoco_utils/algebraic_riccati.hpp>
+ 
+ #include <unsupported/Eigen/MatrixFunctions> //matrix exponential
+@@ -49,6 +50,7 @@ void HLIP::UpdateHLIP(double z0, double Ts, double Td)
+     }
+     Eigen::VectorXd klqr_DCM_vector = -SolveDlqrGain(Eigen::MatrixXd::Identity(1, 1) * params.a_DCM, Eigen::MatrixXd::Identity(1, 1) * params.b_DCM, Eigen::MatrixXd::Identity(1, 1), Eigen::MatrixXd::Identity(1, 1), 0.00000001);
+     klqr_DCM = klqr_DCM_vector(0);
++    if (const char* ks = std::getenv("ROMOCO_KSCALE")) { klqr_DCM *= std::atof(ks); }
+ 
+ 
+ 
+diff --git a/src/romoco_utils/include/romoco_utils/simple_timer.hpp b/src/romoco_utils/include/romoco_utils/simple_timer.hpp
+index d2ff93a..215920e 100644
+--- a/src/romoco_utils/include/romoco_utils/simple_timer.hpp
++++ b/src/romoco_utils/include/romoco_utils/simple_timer.hpp
+@@ -27,16 +27,18 @@ class SimpleTimer {
+ 
+   // Reset all time stamps to now.
+   void Reset() {
+-    auto now = Clock::now();
+-    t0_ = ToSeconds(now);
++    t0_ = Now();
+     t_old_ = t0_;
+     t_now_ = t0_;
+   }
+ 
++  // Simulation hook: when set, all timers read this (seconds) instead of the wall clock.
++  static void SetExternalTime(double t) { external_time_() = t; external_set_() = true; }
++
+   // Update t_now and shift t_old.
+   void Tick() {
+     t_old_ = t_now_;
+-    t_now_ = ToSeconds(Clock::now());
++    t_now_ = Now();
+   }
+ 
+   // Accessors (seconds).
+@@ -55,6 +57,12 @@ class SimpleTimer {
+  private:
+   using Clock = std::chrono::steady_clock;
+ 
++  static double& external_time_() { static double v = 0.0; return v; }
++  static bool& external_set_() { static bool v = false; return v; }
++  static double Now() {
++    return external_set_() ? external_time_() : ToSeconds(Clock::now());
++  }
++
+   static double ToSeconds(const Clock::time_point& tp) {
+     return std::chrono::duration<double>(tp.time_since_epoch()).count();
+   }

@@ -1563,3 +1563,32 @@ for periods 1.5 / 1.0 / 3.0), and replacing the arm torques by a PD hold (LABROB
 The root cause inside labrob's WBC / hand-admittance path is still unknown. Script: tools/labrob_diag_blowup.py.
 
 **RoMoCo:** not retested in this round (CoM drift and QP infeasibility around 7.5 s, as documented above).
+
+## RoMoCo, second diagnosis round (sim-time clock, step-to-step oscillation, handover)
+
+**Real bug found and fixed: wall-clock time.** RoMoCo's `SimpleTimer` reads `std::chrono::steady_clock`, so the controller's `t`
+and `dt` (gait phase, the angular-momentum Kalman filter's `dt`) followed wall time, not simulation time.
+`patches/romoco_sim_time_and_kscale.patch` adds `SimpleTimer::SetExternalTime`; the bridge now takes the sim time
+(`update(..., t)`, arena passes `st.t`). Runs are now independent of wall-clock pacing (fall times 8.30 / 8.23 / 8.22 s for three runs
+with vx 0.2 / 0.2 / 0.1, versus 7.1-8.8 s before). This does not make it walk.
+
+**What the per-step logs show (vx 0.1, flat):**
+- The controller stays in STANDING for ~7 s (sim time) after the velocity command starts: the standing output first shifts the CoM
+  sideways (`stand2step_y_offset`, ~1 mm/s) and only then allows the STANDING -> WALKING switch.
+- At the switch the right foot unloads at once (Fz R: 32 -> 0 N within 50 ms) and the CoM moves AWAY from the stance (left) foot:
+  y goes 0.036 -> -0.16 m in 0.45 s; hip roll and ankle roll of the stance leg follow it (0.057 -> +0.27 rad). The robot topples toward
+  the swing side before the first step lands.
+- If walking is requested from t=0 it falls 1.1 s later; so the handover is not the only problem.
+- The planned footstep alternates and grows from step to step (x: +0.23, -0.82, +0.87, -0.35, +0.80 m; y saturating at the +-0.6 / 0.1 clamps),
+  the same period-2 pattern as in the centroidal MPC, but scaling the DCM feedback gain by 0.7 / 0.5 / 0.3 (env ROMOCO_KSCALE) changed nothing
+  (fall 6.6-7.4 s, 0.2-0.4 m), and a low-pass on the command (ROMOCO_ALPHA 0.4 / 0.15) made it fall earlier (7.1-8.0 s).
+- IK "did not converge" warnings only appear after the robot is already falling (not the cause).
+
+**Ruled out as the cause (N=1-2 each, all still fall):** upstream pose (knee 0.4 / hip -0.2 / ankle -0.2, which gives 14 s before the fall instead of 8 s
+but still topples at the first step), upstream timestep 0.5 ms, joint damping 1, 10-30x stiffer waist/arm hold, foot geometry and
+inertia (identical in both MJCFs). Loading RoMoCo's own MJCF natively with the arena is not a valid test (the robot falls at
+the same time for every K, i.e. without being driven correctly by the arena's loop).
+
+Upstream's own page (GuilhermeAsura/humanoid_repos_eval) only claims the scripted clip "stays upright"; no duration, disturbance or
+velocity numbers. So RoMoCo here is: sim-time bug fixed, mechanism of the fall characterised (lateral topple at the handover plus
+step-to-step oscillation), not solved. Script: tools/romoco_free.py (env RAMP0, POSE, BASEZ, DT, DAMP, UPPER, NATIVE).
