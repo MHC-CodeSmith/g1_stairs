@@ -947,6 +947,32 @@ WBC/footstep-planner's behavior a few steps into real stepping - likely related 
 zero-force-target condition noted above (the coop planner was designed around a human pulling the robot's
 hand, and a zero-force "glide" default may not be a well-conditioned target for it to sustain indefinitely).
 
+**Tested that `eh=0,0` theory directly - it is wrong, and the real answer is worse (and matches
+GuilhermeAsura's own finding exactly).** `HandAdmittanceController::integrate()` estimates hand force not
+from a sensor but from the WBC's own torque residual (`WristForceEstimator`, fed `wbc_torques` each step) - so
+applying a genuine external force to the wrist bodies in MuJoCo (`xfrc_applied`, the same mechanism as the
+push tests elsewhere in this arena) should make the estimator see a real "someone is pulling this robot by the
+hand" signal and drive `computeNextSteps` with a non-degenerate target, unlike the `eh=0,0` single-trigger
+case. Swept a sustained forward pull on both wrists (1-3 N, starting at t=2s, past the estimator's own 2s
+transient-rejection window):
+
+| pull force | fell? | fall time | distance before falling |
+|---|---|---|---|
+| 1 N | yes | t=11.35s | 0.12 m (same as no pull) |
+| 2 N | yes | t=8.61s | 0.23 m |
+| 3 N | yes | t=4.53s | 0.81 m |
+
+More force makes it walk faster and further, but fall *sooner* - a clean, monotonic trade-off, not a
+threshold past which it stabilizes. This is not a planning problem that a better-conditioned target fixes; it
+is **exactly** the fragility GuilhermeAsura's README already names: *"Push recovery tested and doesn't work:
+any scripted external force, down to a light 8N nudge, destabilizes the controller into a physics-breaking NaN
+rather than a fall or recovery."* A sustained hand-pull is itself an external force on this controller, and it
+destabilizes it the same way a push would, just somewhat more slowly at low magnitudes. There is no parameter
+swept across this investigation - reactive-standing flag, coop-trigger wiring, torque slew rate, or now pull
+force - that produces sustained walking, because the instability is not located in any of those; it is in the
+whole-body QP's own numerics under real dynamic load, which only a rewrite of `WholeBodyController`'s cost/
+constraint formulation would address. That is out of scope for an integration pass.
+
 ### It's not just us: walking is an open problem for all three classical repos
 
 Given both wb_humanoid_mpc formulations and RoMoCo failed to produce real walking in this arena, it is worth
