@@ -19,7 +19,7 @@ from arena.world import TP
 BRIDGE_DIR = os.path.join(os.path.dirname(TP), "bridge", "wbmpc_centroidal", "build")
 CACHE_DIR = os.path.join(os.path.dirname(TP), "bridge", "wbmpc_centroidal")  # cppad_code_gen/ lives here
 WBMPC_ROOT = os.path.join(TP, "wb_humanoid_mpc")
-TASK_FILE = os.path.join(WBMPC_ROOT, "robot_models/unitree_g1/g1_centroidal_mpc/config/mpc/task.info")
+TASK_FILE = os.environ.get("WBMPC_TASK_FILE") or os.path.join(WBMPC_ROOT, "robot_models/unitree_g1/g1_centroidal_mpc/config/mpc/task.info")
 REFERENCE_FILE = os.path.join(WBMPC_ROOT, "robot_models/unitree_g1/g1_centroidal_mpc/config/command/reference.info")
 URDF_FILE = os.path.join(WBMPC_ROOT, "robot_models/unitree_g1/g1_description/urdf/g1_29dof.urdf")
 GAIT_FILE = os.path.join(WBMPC_ROOT, "humanoid_nmpc/humanoid_common_mpc/config/command/gait.info")

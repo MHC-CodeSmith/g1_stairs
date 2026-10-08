@@ -1536,3 +1536,30 @@ Notes: push totals 11/12 across 50-200 N (a 200 N 0.2 s push is a 40 N*s impulse
 the controller has no terrain perception, it walks blind into the first riser. Free-run scripts:
 tools/wbmpc_centroidal_free.py and tools/wbmpc_centroidal_free_scenarios.py (push / crouch / stairs).
 This supersedes the earlier "lockstep is fragile" section: lockstep was a diagnostic tool, not the fix.
+
+## Follow-up: what the period-2 fix does and does not solve
+
+**Centroidal, rough terrain (6 cm), blind, vx 0.12, N=5:** 0/5. Falls at 1.7, 7.4, 7.9, 10.0 and 11.5 s after 0.15-2.8 m.
+
+**Centroidal, stairs with terrain-aware settings.** The upstream reference manager hard-codes the ground height to 0
+(`terrainHeight = 0.0` in SwitchedModelReferenceManager::adaptToCurrentGroundHeight, although it computes a stance-foot
+estimate on the line above). `patches/wbmpc_ground_estimate.patch` makes that override opt-in
+(env WBMPC_USE_GROUND_ESTIMATE=1; default unchanged, flat-ground regression re-checked: 14.1 m and 13.4 m at vx 0.3).
+With the estimate on and swingHeight raised to 0.15 or 0.22 m (stairs rise is 0.15 m; default is 0.08 m), N=3 each:
+0/6, and the robot now falls **before** reaching the first riser (x 0.5-1.2 m, 6.2-7.6 s): a high swing already
+destabilises flat walking. Raising the foot is not enough; the controller would need real footholds. Stairs stay 0/5
+at default settings. Not solved.
+
+**Whole-body formulation with the same command low-pass** (alpha 0.4 and 0.2, N=3 each, plus 3 baseline runs): 9/9 fell at
+1.1-2.3 s. The whole-body failure is a different mechanism (it falls even standing); the filter (kept in arena/wbmpc.py,
+off by default via WBMPC_ALPHA=1.0) does not help.
+
+**labrob.** Torque low-pass (LABROB_ALPHA 0.5/0.2/0.1): no effect (falls 7.1-7.7 s). Per-tick logging found the actual trigger:
+the WBC output is smooth (35 Nm max) and then, in ONE 2 ms tick (t=7.348 s in the 1.5 s trigger-period run), the left shoulder
+torque jumps from -3 Nm to -1262 Nm (with 192 Nm / 81 Nm on the shoulder pitch / elbow) and the robot collapses within 0.1 s.
+That is a garbage QP solution in a single tick, not a gradual loss of balance. A solver-failure fallback that holds the previous
+torque when any joint exceeds 2x its effort limit (LABROB_LIMIT_MARGIN, off by default) did not prevent the falls (7.9 / 4.1 / 5.9 s
+for periods 1.5 / 1.0 / 3.0), and replacing the arm torques by a PD hold (LABROB_ARM_HOLD=1) made it fall earlier (4.0-5.0 s).
+The root cause inside labrob's WBC / hand-admittance path is still unknown. Script: tools/labrob_diag_blowup.py.
+
+**RoMoCo:** not retested in this round (CoM drift and QP infeasibility around 7.5 s, as documented above).

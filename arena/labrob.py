@@ -47,6 +47,12 @@ STANDING_POSE = {   # include/globals.h robot_type::G1.initial_joint_positions
 STANDING_BASE_Z = 0.725112
 
 
+EFFORT_LIMIT = {"ankle": 50.0, "wrist": 25.0, "shoulder": 25.0, "elbow": 25.0, "waist": 88.0, "hip": 139.0, "knee": 139.0}
+LIMIT_MARGIN = float(os.environ.get("LABROB_LIMIT_MARGIN", "1e9"))
+ARM_HOLD = os.environ.get("LABROB_ARM_HOLD", "0") == "1"
+TAU_ALPHA = float(os.environ.get("LABROB_ALPHA", "1.0"))  # 1.0 = off (low-pass on the WBC torque)
+
+
 class Labrob(ArenaPolicy):
     name, joints = "labrob", MJ29  # all 29 body joints (labrob's own model has no Dex3 hands)
     control_dt = 1.0 / 500  # G1_CONTROLLER_HZ in include/globals.h; run at full rate, no decimation
@@ -66,6 +72,7 @@ class Labrob(ArenaPolicy):
 
     def reset(self, st):
         joint_pos = {n: float(STANDING_POSE.get(n, 0.0)) for n in self.joints}
+        self._arm_q = np.array([float(STANDING_POSE.get(n, 0.0)) for n in self.joints]); self._tf = None; self._tprev = None
         armatures = {n: 0.0 for n in self.joints}  # see module docstring
         base_pos = (0.0, 0.0, STANDING_BASE_Z)
         base_quat = (1.0, 0.0, 0.0, 0.0)
@@ -94,5 +101,25 @@ class Labrob(ArenaPolicy):
             tuple(float(v) for v in st.lin_vel_b),
             tuple(float(v) for v in st.ang_vel_b),
         )
-        self.tau_ext = np.array([tau[n] for n in self.joints])
+        tau_v = np.array([tau[n] for n in self.joints])
+        # Solver-failure fallback (what a real controller does): the WBC QP occasionally returns garbage
+        # for one tick (e.g. -1262 Nm on a shoulder, ~400x the previous tick, far beyond any G1 actuator).
+        # If any joint exceeds LIMIT_MARGIN x its effort limit, hold the previous tick's torque instead.
+        if getattr(self, "_lim", None) is None:
+            self._lim = np.array([next((v for k, v in EFFORT_LIMIT.items() if k in n), 100.0) for n in self.joints])
+        if getattr(self, "_tprev", None) is not None and np.any(np.abs(tau_v) > self._lim * LIMIT_MARGIN):
+            tau_v = self._tprev.copy()
+            self.n_rejected = getattr(self, "n_rejected", 0) + 1
+        self._tprev = tau_v.copy()
+        if getattr(self, "_tf", None) is None:
+            self._tf = tau_v.copy()
+        self._tf += TAU_ALPHA * (tau_v - self._tf)
+        self.tau_ext = self._tf.copy()
+        if ARM_HOLD:
+            # Optional: arms held by a plain PD at the standing pose; the WBC's arm torques (hand
+            # admittance / wrist-force estimator path) are discarded.
+            arm = np.array([("shoulder" in n or "elbow" in n or "wrist" in n) for n in self.joints])
+            self.tau_ext[arm] = 0.0
+            self.kp[arm] = 40.0; self.kd[arm] = 2.0
+            return np.where(arm, self._arm_q, q)
         return q  # inert: kp == kd == 0, so set_targets's PD term contributes nothing

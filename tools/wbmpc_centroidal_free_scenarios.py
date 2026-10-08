@@ -5,9 +5,9 @@ import numpy as np
 from arena.world import Arena, Command
 from arena.wbmpc_centroidal import CentroidalMpc, STANDING_POSE, STANDING_BASE_Z
 MODE=sys.argv[1]; ARG=float(sys.argv[2]) if len(sys.argv)>2 else 0.0
-terrain = "stairs" if MODE=="stairs" else "flat"
+terrain = "stairs" if MODE=="stairs" else ("rough" if MODE=="rough" else "flat")
 arena = Arena(terrain=terrain, render=False)
-VX = 0.3 if MODE in ("stairs",) else 0.12
+VX = 0.3 if MODE=="stairs" else 0.12
 if MODE=="push": arena.push = (10.0, 0.2, (0.0, ARG, 0.0))
 pol = CentroidalMpc()
 x0 = 0.0

@@ -49,6 +49,9 @@ STANDING_POSE = {   # config/command/reference.info's defaultJointState
 STANDING_BASE_Z = 0.7925
 
 
+FILTER_ALPHA = float(os.environ.get("WBMPC_ALPHA", "1.0"))  # 1.0 = off; see wbmpc_centroidal.py
+
+
 class WbMpc(ArenaPolicy):
     name, joints = "wbmpc", MJ29  # all 29 body joints (6 wrists held fixed by the MPC itself)
     control_dt = 1.0 / 500
@@ -74,6 +77,7 @@ class WbMpc(ArenaPolicy):
         joint_pos = {n: float(STANDING_POSE.get(n, 0.0)) for n in self.joints}
         self._mpc.start(joint_pos, (0.0, 0.0, STANDING_BASE_Z), (1.0, 0.0, 0.0, 0.0))
         self.tau_ext[:] = 0.0
+        self._filt = None
 
     def obs(self, st, cmd):
         return st.get(st.q, self.joints)  # no learned observation vector; exposed for arena.check_adapters parity
@@ -100,5 +104,11 @@ class WbMpc(ArenaPolicy):
         self.kp = np.array([action[n]["kp"] for n in self.joints])
         self.kd = np.array([action[n]["kd"] for n in self.joints])
         ff = np.array([action[n]["ff"] for n in self.joints])
-        self.tau_ext = self.kd * qd_des + ff
-        return q_des
+        tau = self.kd * qd_des + ff
+        if self._filt is None:
+            self._filt = (q_des.copy(), tau.copy())
+        qf, tf = self._filt
+        qf += FILTER_ALPHA * (q_des - qf)
+        tf += FILTER_ALPHA * (tau - tf)
+        self.tau_ext = tf.copy()
+        return qf.copy()
