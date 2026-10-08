@@ -926,6 +926,54 @@ documented above) looks different in character - a ~0.8s controlled-looking topp
 between 0 and a 139 Nm ceiling rather than a single explosive spike - consistent with genuine constraint
 infeasibility producing degenerate-but-bounded solutions, not the same failure mode as labrob's blow-up.
 
+**Also checked GuilhermeAsura's exact demo wiring and a wall-clock-timing theory - both ruled out.**
+Cloned his `humanoid_repos_eval` and traced `romoco-sim-sync` to its real entry point,
+`g1_stack/src/g1_main_state_machine.cpp`: it uses `BasicStateMachine` (full orchestration incl. embedded
+MuJoCo stepping) rather than this bridge's `BasicControllerStateMachine` (controller-only, no sim) - but
+diffing the two classes' `.cpp` files shows identical mode-transition and controller-selection logic, just
+with/without an embedded `sim_` member. Not the source of divergence. The demo's own scripted command,
+`predefined_radio`, sets `X=1` (full-scale, not the `vx=0.3` used in tests above) at t=10s - retested with
+that. Also noticed `BasicControllerStateMachine::UpdateControl` times itself via `SimpleTimer`
+(`std::chrono::steady_clock` - **wall-clock time**, not simulation time) rather than a caller-supplied `dt`,
+raising a real question: does our Python harness, which drives physics and controller in a tight loop with no
+real-time pacing, feed the walking-output generator a meaningfully different `dt` than the demo's
+closer-to-real-time ROS2 loop? Retested with the harness explicitly paced to wall-clock real-time
+(`time.sleep` to match each 2 ms physics step) and `vx=1.0` to match `predefined_radio`: **no change** - falls
+at t=7.48s, trajectory numerically identical to the unpaced runs up to the failure point. Wall-clock timing
+is not the cause either.
+
+**Found the actual mechanistic cause, by instrumenting the footstep planner directly.** User pushed to keep
+digging rather than settle for "PrimalInfeasible, cause unidentified." Added a debug print to
+`romoco_output/src/walking_output_fp.cpp`'s `ComputeStepLocal` (the function that turns the LIP planner's raw
+footstep output into the whole-body QP's tracking target), printing the step target both before and after a
+hardcoded safety clamp (`std::clamp(StepLocal(1), 0.1, 0.6)` for a right-stance step, mirrored for left).
+Rebuilt just `romoco_output` (6.6s) and reran the walking replay. Early steps look sane - e.g.
+`stepSize_raw_y=-0.22` while left is stance, within the clamp's intended range. But right before the QP starts
+failing, this appears:
+
+```
+DEBUG stepSize_raw_y=-0.444645 isLeftStance=0
+DEBUG stepSize_clamped_y=0.1
+```
+
+With the **right** foot in stance, the planner's raw lateral target has drifted to **-0.44 m - the wrong
+sign entirely** (a right-stance step should be positive, same convention as the `0.1 to 0.6` clamp range for
+that case) and far outside any physically sane magnitude. The hardcoded clamp doesn't catch a bad value
+gracefully; it silently snaps -0.44 to +0.1, a **0.54 m discontinuous jump** in the whole-body QP's own
+tracking target from one control step to the next. That is exactly the kind of instantaneous target
+discontinuity that would demand an instantaneous CoP/CoM correction no real (or simulated) robot can execute,
+and precisely matches the PrimalInfeasible pattern documented above.
+
+**This means the hardcoded safety clamp is a symptom suppressor, not a bug by itself - it is masking a real
+divergence in the LIP state estimate** (`com_kf_step`, the Kalman filter feeding `UpdateInputLIP`) that
+happens once real single-support dynamics start. Why that estimate diverges - sensor-to-LIP-model mismatch
+for this G1 configuration, an unstable filter gain, or a genuine bug in the CoM/angular-momentum pivot state
+construction - is one layer deeper than this pass reached; confirming it would mean instrumenting
+`com_kf_step` itself and comparing its running CoM/momentum estimate against the simulator's ground truth
+frame by frame, a focused follow-up now that the failure is traced to a specific function and variable rather
+than "the QP sometimes fails." This is the most precise root-cause finding of this investigation pass across
+all three classical controllers.
+
 **Tried a torque slew-rate limiter as a mitigation - it makes the failure look like real physics, but does
 not prevent it.** Added `Arena.tau_rate_limit` (`arena/world.py`, opt-in, `None` by default) - caps how fast
 the commanded torque can change per step, the same idea as a real motor driver's current-rate limit, without
