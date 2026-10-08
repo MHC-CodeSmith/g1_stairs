@@ -36,6 +36,7 @@ STANDING_POSE = {
     "right_elbow_joint": 0.0, "right_wrist_roll_joint": 0.0, "right_wrist_pitch_joint": 0.0, "right_wrist_yaw_joint": 0.0,
 }
 STANDING_BASE_Z = 0.7925
+FILTER_ALPHA = float(os.environ.get("WBMPC_ALPHA", "0.4"))
 
 
 class CentroidalMpc(ArenaPolicy):
@@ -74,6 +75,7 @@ class CentroidalMpc(ArenaPolicy):
             time.sleep(0.1)
         time.sleep(0.2)
         self.tau_ext[:] = 0.0
+        self._filt = None
 
     def obs(self, st, cmd):
         return st.get(st.q, self.joints)
@@ -98,5 +100,16 @@ class CentroidalMpc(ArenaPolicy):
         self.kp = np.array([action[n]["kp"] for n in self.joints])
         self.kd = np.array([action[n]["kd"] for n in self.joints])
         ff = np.array([action[n]["ff"] for n in self.joints])
-        self.tau_ext = self.kd * qd_des + ff
-        return q_des
+        tau = self.kd * qd_des + ff
+        # The closed loop MPC -> PD -> robot has a period-2 instability at the solve rate: each new plan
+        # makes the joint target jump with alternating sign and ~1.2x growing amplitude (hip pitch jumps
+        # +0.018, -0.021, +0.026, ... rad at consecutive solves), which bounces the robot and ends in a
+        # yaw spin. A first-order low-pass on the command (alpha per control step) breaks the cycle:
+        # 12/12 lockstep runs walked 30 s with alpha 0.1-0.4 vs. ~1/3 without.
+        if self._filt is None:
+            self._filt = (q_des.copy(), tau.copy())
+        qf, tf = self._filt
+        qf += FILTER_ALPHA * (q_des - qf)
+        tf += FILTER_ALPHA * (tau - tf)
+        self.tau_ext = tf.copy()
+        return qf.copy()
