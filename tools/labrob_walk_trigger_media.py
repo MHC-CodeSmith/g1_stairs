@@ -28,20 +28,19 @@ pol.reset(st)
 
 FPS = 25
 dt = arena.model.opt.timestep
-seconds = 11.0
+seconds = 13.0
 n = int(seconds / dt)
-# save exactly FPS frames per sim-second so the mp4 plays back in real time
 save_every = max(1, round(1.0 / (dt * FPS)))
 
 frames = []
 fall_t = None
-last_trigger = -1.0
-PERIOD = 0.8
+triggered = False
 for k in range(n):
     t = k * dt
-    if t >= 2.0 and t - last_trigger >= PERIOD:
+    if not triggered and t >= 2.0:
         pol._wm.trigger_walk()
-        last_trigger = t
+        triggered = True
+        print(f"triggered at t={t:.2f}", flush=True)
     st = arena.state()
     arena.set_targets(pol.joints, pol.act(st, Command()), pol.kp, pol.kd)
     arena.set_external_torque(pol.joints, pol.tau_ext)
@@ -51,9 +50,8 @@ for k in range(n):
         frames.append(arena.render(**CAM))
     arena.step_physics(1)
 
-print(f"frames saved: {len(frames)}, expected mp4 duration: {len(frames)/FPS:.2f}s (should be ~{seconds}s)", flush=True)
-
-mp4 = os.path.join(REPO, "output/media", "labrob_walk_trigger2.mp4")
+print(f"frames: {len(frames)}, duration: {len(frames)/FPS:.2f}s", flush=True)
+mp4 = os.path.join(REPO, "output/media", "labrob_walk_trigger3.mp4")
 import imageio.v2 as iio
 iio.mimsave(mp4, frames, fps=FPS, macro_block_size=8)
 gif(mp4, os.path.join(REPO, "docs/media", "labrob_walk_trigger.gif"), (0.0, len(frames)/FPS))

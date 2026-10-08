@@ -58,7 +58,7 @@ class Labrob(ArenaPolicy):
             sys.path.insert(0, BRIDGE_DIR)
         import labrob_bridge
         self._wm = labrob_bridge.WalkingManager()
-        self._wm.set_reactive_standing(True)
+        self._wm.set_reactive_standing(False)  # matches upstream main_sim.cpp default; required for the coop walking planner to engage
         self.kp = np.zeros(len(self.joints))
         self.kd = np.zeros(len(self.joints))
         self.tau_ext = np.zeros(len(self.joints))

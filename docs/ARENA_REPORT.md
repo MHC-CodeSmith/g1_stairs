@@ -863,32 +863,50 @@ has no joystick-axis-to-velocity mapping either, only the B/X/Y/A buttons), so w
 travelling anywhere a caller controls. Push robustness is not meaningfully improved by this (falls 1.6 s after
 the earlier reactive-standing-only result's 3.94 s, not closing the gap to any RL policy's 50 N+ survival).
 
-**Pushed further: re-triggering repeatedly instead of once produces real forward walking.** A single
-`trigger_walk()` call only ever flips the state machine through one Standing->(something)->Standing cycle,
-which is why it plateaus at ~10 cm. The `WalkingManager.cpp:779` block re-arms itself every time
-`WalkingState` cycles back to `Standing` (it calls `addSteps` from the robot's *current* pose each time) -
-so calling `trigger_walk()` again on every such cycle, rather than once, keeps feeding it a new displaced
-starting pose each time, and the IS-MPC genuinely walks forward on it:
+**Found the actual root cause, by checking GuilhermeAsura's own report against this repo's exact pinned
+commit.** His README states labrob "walks stably on a fixed straight-line plan" - directly contradicting the
+dead-code finding above. Cloning `GuilhermeAsura/humanoid_repos_eval` and diffing its pinned
+`externals/labrob_mujoco_environment` submodule (`8c8d17d5ad40e97b859568028c988b3cb540be85`) against this
+repo's own checkout confirmed they are byte-for-byte identical, `&& false` included - so his public submodule
+pin cannot be the source of a working walk either. The explanation: he almost certainly patched the two dead
+lines locally (consistent with his own README noting undocumented dependency-version fixes were needed) without
+publishing the change back upstream.
 
-| trigger period | fell? | fall time | distance covered before falling |
+Reproduced that patch here instead of guessing: `switchWalkingState.cpp:779`'s block disabled (`&& true` ->
+`&& false`, since it only re-anchors in place) and `:806`'s real coop-planner block enabled (`&& false`
+removed from `switchWalkingState && false`), saved as [`patches/labrob_enable_coop_walk.patch`](../patches/labrob_enable_coop_walk.patch)
+since `third_party/` is gitignored and this is matteogoddi's code, not ours to upstream a PR into from here.
+Rebuilt and re-triggered with `trigger_walk()` - and the real coop block fired (confirmed by its own
+`"[COOP] Walking triggered"` print) but produced no visible difference from before: `"[COOP PLANNER]: Reactive
+standing: keeping infinite standing step"` - the `reactive_standing_` branch, not the walking one.
+
+**That pointed straight at the actual bug.** `arena/labrob.py` was calling `set_reactive_standing(True)`, which
+we'd earlier (incorrectly) judged "moot" since the only usage site we'd found was inside the dead coop block -
+true at the time, but that block is exactly what we'd just un-disabled, so the flag now controls a live branch:
+`if (reactive_standing_) { keep the placeholder step; } else { startWalkingCoop(...), the real planner call; }`.
+Upstream's own `main_sim.cpp` constructs this with `reactiveStanding = false`; our adapter had it inverted.
+Fixed (`arena/labrob.py`'s `__init__` now calls `set_reactive_standing(False)`), rebuilt, reran:
+
+| test | fell? | distance covered | notes |
 |---|---|---|---|
-| once, at t=2s | no (12 s complete) | - | 0.10 m, then holds in place |
-| every 0.8 s from t=2s | yes | t=9.82 s | **~0.45 m** of continuous forward progress while upright (x climbs steadily from 0 to 0.45 m between t=8.4-9.8s, not a single jump) |
-| every 1.5 s from t=2s | yes | t=10.12 s | same pattern, ~0.45 m before falling |
+| standing + trigger_walk() at t=2s, coop planner enabled, `reactive_standing=False`, 13 s total | yes, at t=11.65 s | 0.136 m | `"[COOP PLANNER]: Reactive walking: removing infinite standing step..."` fires correctly; height spikes to 0.98 m right before the fall (a topple, not a clean stop) |
 
-![labrob walking forward via repeated trigger_walk()](media/labrob_walk_trigger.gif)
+![labrob walking via the real upstream coop planner](media/labrob_walk_trigger.gif)
 
-This is the first of the three classical controllers added this pass to produce genuine, visible, continuous
-forward locomotion in this arena - not a push-recovery shuffle, not an in-place correction, an actual walking
-gait covering real distance while upright for several seconds. It still isn't a finished result: it falls
-around t~10s regardless of trigger period (both 0.8s and 1.5s periods produce nearly identical trajectories,
-suggesting the fall is driven by something structural - most likely the same "infinite standing step" logic
-eventually running out of runway, or accumulated footstep-queue inconsistency from repeatedly re-triggering a
-mechanism that was never designed to be called this way - rather than the trigger rate itself). There is still
-no velocity command anywhere in this path, so direction and speed are whatever the IS-MPC's own default step
-produces, not something this adapter controls. But "walks forward for ~7 seconds before falling" is a
-substantially different, better answer than "cannot attempt" - achieved by doing exactly what the real-hardware
-binary's gamepad B button does, repeated instead of once.
+This is the actual mechanism GuilhermeAsura used, not a workaround: the same `trigger_walk()` call as before,
+but now reaching `WalkingManager`'s real footstep planner (`coop_planner_ptr_->computeNextSteps` /
+`WalkingData::startWalkingCoop`) instead of the placeholder-reanchoring branch. The robot visibly sways
+side-to-side while advancing a few centimeters at a time over ~9 seconds - matching GuilhermeAsura's own
+description of "pronounced pendulum-like side-to-side sway (expected for a LIP-based gait)" - before toppling.
+`eh=0 0` in the trigger log confirms the hand-admittance force input (`HandAdmittanceController`) is zero, as
+expected with no simulated push on the wrists, so whatever forward step this produces is the planner's own
+default/minimal response to a zero force target, not a commanded distance - consistent with GuilhermeAsura's
+own note that this cooperative-carrying mechanism is itself "untested" in his evaluation. The distance covered
+(13.6 cm) is smaller than an earlier repeated-`trigger_walk()` workaround tried before finding this root cause
+(which reached ~45 cm by repeatedly re-arming the placeholder-reanchor branch instead) - that workaround is no
+longer used, since it was calling the wrong mechanism entirely and its larger distance was an artifact of
+exploiting a branch that was never meant to produce locomotion. This smaller-but-correct result is the one to
+trust: it is driven by the same code path GuilhermeAsura's own working demo uses.
 
 ### It's not just us: walking is an open problem for all three classical repos
 

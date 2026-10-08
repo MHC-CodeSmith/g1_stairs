@@ -8,6 +8,13 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Enables the real (not dead-code) standing->walking coop planner - see
+# patches/labrob_enable_coop_walk.patch and docs/ARENA_REPORT.md for why. Idempotent: skips if
+# already applied (e.g. a rebuild after the first apply).
+if ! grep -q "if (switchWalkingState && false){" "${ROOT_DIR}/third_party/labrob_mujoco_environment/src/WalkingManager.cpp" 2>/dev/null; then
+    patch -p1 -d "${ROOT_DIR}/third_party/labrob_mujoco_environment" < "${ROOT_DIR}/patches/labrob_enable_coop_walk.patch"
+fi
+
 if [ "$(docker inspect -f "{{.State.Running}}" labrob 2>/dev/null)" != "true" ]; then
     echo "labrob container not running; run tools/run_labrob_headless.sh first" >&2
     exit 1

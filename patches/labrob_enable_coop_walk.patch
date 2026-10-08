@@ -1,0 +1,20 @@
+--- a/src/WalkingManager.cpp	2026-10-07 23:20:17.391218613 -0300
++++ b/src/WalkingManager.cpp	2026-10-07 23:25:08.861408488 -0300
+@@ -776,7 +776,7 @@
+ 
+     // IF STANDING, ADD STEPS TO START WALKING AGAIN OR IF DOUBLE SUPPORT, REMOVE STEPS TO GO BACK TO STANDING
+ 
+-    if (switchWalkingState && true){
++    if (switchWalkingState && false){
+         double yaw_angle = rpyFromQuaternion(robot_state.orientation).z();
+         if (walking_data_.getWalkingState() == WalkingState::Standing) {
+             walking_data_.addSteps(
+@@ -803,7 +803,7 @@
+     std::chrono::time_point<std::chrono::system_clock> end_coop_planner;
+     bool coop_planner_ran = false;
+ 
+-    if ((switchWalkingState && false) || (false && t_msec_ ==5000 && !coop_walking_active_))
++    if (switchWalkingState || (false && t_msec_ ==5000 && !coop_walking_active_))
+     {
+         switchWalkingState = false;
+         std::cout << "[COOP] Walking triggered at t=" << t_msec_
