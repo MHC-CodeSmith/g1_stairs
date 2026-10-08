@@ -21,6 +21,13 @@ if os.environ.get("UPPER"):
     for i,n in enumerate(arena.joint_names):
         if any(k in n for k in ("waist","shoulder","elbow","wrist","hand_")):
             arena.hold_kp[i]*=f; arena.hold_kd[i]*=f**0.5
+if os.environ.get("LOCK"):
+    # RoMoCo native interface_config.yaml: locked joints held by a stiff PD at this pose (arms forward)
+    names=["waist_yaw","waist_roll","waist_pitch","left_shoulder_pitch","left_shoulder_roll","left_shoulder_yaw","left_elbow","left_wrist_roll","left_wrist_pitch","left_wrist_yaw","right_shoulder_pitch","right_shoulder_roll","right_shoulder_yaw","right_elbow","right_wrist_roll","right_wrist_pitch","right_wrist_yaw"]
+    qd=[0,0,0,.7,0,0,-.5,0,-.5,0,.7,0,0,-.5,0,-.5,0]
+    kp=[1000,600,1000]+[700]*14
+    for n,q,k in zip(names,qd,kp):
+        i=arena.joint_names.index(n+"_joint"); arena.hold_q[i]=q; arena.hold_kp[i]=k; arena.hold_kd[i]=15.0
 BASEZ = float(os.environ.get("BASEZ", STANDING_BASE_Z))
 pol = RoMoCo()
 arena.reset(base_z=BASEZ, joint_pos=STANDING_POSE)
