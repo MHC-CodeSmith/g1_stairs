@@ -1356,6 +1356,21 @@ same category of finding as RoMoCo's per-cycle CoM drift above, not yet isolated
 that one was. Reaching the stairs would need roughly 30-40 cm more sustained distance than this formulation
 currently manages before whatever destabilizes it after ~0.9 m takes effect.
 
+**Correction after sampling properly (N=5 per condition, same command ramp 0->0.3 m/s over t=1-4 s, stairs
+terrain).** The three single runs above all landing at 0.83-0.93 m looked like a hard ceiling; it is not. This
+formulation is wall-clock-sensitive (its MPC solves on a background thread paced by real time, see the
+"MPC loop running slow" warnings), so single runs are noisy and a ceiling inferred from three of them was
+sampling luck. Five unpaced trials: max x = **0.95, 1.08, 1.36, 1.11, 1.43 m** (fall at t=5.1-7.6 s) - **2 of 5
+reach the first riser (x >= 1.2 m)** and fall there, which is the expected failure for a flat-ground gait
+meeting a 15 cm step. Also tested whether the sim being unpaced relative to wall-clock is the problem
+(upstream's own loop is real-time paced): five trials with the arena loop slept to match wall-clock 1:1 gave
+**0.19, 1.34, 0.06, 0.04, 0.15 m** - worse and more erratic (mean 0.36 m vs 1.18 m unpaced), so real-time
+pacing is not the fix and unpaced runs are used for all numbers in this report. Also checked contact flags
+(`RobotState::contactFlags_`): upstream's own `MujocoSimInterface` hardcodes both feet as in contact ("Fix
+later") exactly like this bridge does, so that is not a divergence either. Upstream does call
+`setTime(mujocoData_->time)` on every state, confirming the time fix above matches the reference
+implementation.
+
 RoMoCo's own stairs attempt was already documented earlier in this report (`max_x=0.465 m`, same underlying
 QP failure as its flat-ground walk test) - included here for completeness: none of the three classical
 controllers reach the first step of this arena's stairs in their current state.
