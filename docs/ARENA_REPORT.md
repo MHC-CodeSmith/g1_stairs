@@ -1370,6 +1370,23 @@ After the time fix the centroidal formulation still falls 7-9.5 s into a flat wa
    0.76 / 0.51 / 1.43 / 0.94 / 1.28 m - no better than with hands (7.05-9.5 s, 0.77-2.01 m). Ruled out for this
    controller. (Not rerun for labrob or RoMoCo.)
 
+4. **Entering the trot gaits.** At the commanded 0.3 the scaled velocity (x2.4) is ~0.72 m/s and the automatic
+   state machine promotes `walk -> slower_trot -> slow_trot` (running gaits with flight phases), a plausible place
+   to fall. Ran 9 constant-velocity trials kept inside the walking range (commands 0.08 / 0.12 / 0.18, 3 each; the
+   log shows only `slow_walk` or `slow_walk, walk`, never a trot): all 9 still fall (4.9-13.9 s). Ruled out.
+
+**What the fall actually is: a yaw spin, not a forward topple.** Logged pose every 0.5 s on a slow-walk run
+(command 0.12): standing is stable but sags (pelvis 0.792 -> 0.739 m by t=2 s); at t~4 s, when stepping starts,
+yaw leaves 0 and grows 5.7 -> 7.7 -> 16.5 -> 44.5 degrees over 2 s while roll grows to -27 degrees, with almost no
+forward progress (x ~ 0.1 m) and no commanded yaw rate. Falls with 0.5 m or 2 m travelled are the same event
+seen later or earlier.
+
+5. **Contact model vs upstream.** The upstream G1 model sets `friction="3.0 0.1 0.001"`, `solref="0.001 1.0"`,
+   `solimp="0.999 0.95 0.005"`; this arena's floor uses friction 1.0 / 0.005 / 0.0001 and default softness.
+   Set all geom friction to the upstream values: standing then falls at 1.4-1.8 s in 5/5 trials (worse). Set
+   friction **and** the stiff solref/solimp: 5 trials fall at 5.3 / 5.9 / 7.1 / 9.7 / 7.3 s with max yaw
+   26-116 degrees - not better than the original arena contact. Ruled out as the fix.
+
 The cause of the fall after a few steps is therefore still unknown for the centroidal formulation.
 
 ## Stairs test, retried for the two controllers that now actually walk
