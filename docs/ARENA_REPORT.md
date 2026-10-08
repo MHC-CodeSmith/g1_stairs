@@ -1498,3 +1498,41 @@ unresolved and is reported as such. No robust walking claim is made for this con
 Overall the lockstep result does not hold up: sustained walking occurs in about a third of runs, and push
 recovery cannot be separated from the onset fall. Crouch and stairs were not run under lockstep for this reason.
 Script: tools/wbmpc_centroidal_lockstep.py <vx> <steps_per_solve> [push_N].
+
+## wb_humanoid_mpc centroidal: ROOT CAUSE FOUND and fixed (period-2 solve instability)
+
+Per-step logging of a standing/stepping run showed the real mechanism behind the "yaw-spin fall". At every new MPC
+solve the joint target jumps with **alternating sign and growing amplitude** (hip pitch target-minus-measured:
++0.018, -0.021, +0.026, -0.031, +0.039, -0.046, +0.055, -0.063, +0.072 rad, ~1.2x per solve). That is a period-2
+instability of the closed loop MPC -> PD -> robot at the solve rate. It makes the robot bounce while still standing
+(contact force swings 52-270 N per foot, both feet airborne at 1.6 s, before any velocity command), and the yaw spin
+is only the consequence. This explains the earlier "lucky" solve intervals (19/23/24 steps): they were just the
+cases where the cycle did not grow in time.
+
+**Fix** (arena/wbmpc_centroidal.py): first-order low-pass on the commanded q_des and feedforward torque,
+alpha = 0.4 per 2 ms control step (env WBMPC_ALPHA). No change to the MPC, its parameters or the Arena.
+
+Lockstep, 6 steps/solve (nominal 80 Hz), vx 0.12, flat, 30 s, 4 runs each:
+
+| alpha | walked 30 s | distance | max yaw |
+|---|---|---|---|
+| none | falls (3-8 s) | - | up to 180 deg |
+| 0.1 | 4/4 | 3.3-3.4 m | 13-24 deg |
+| 0.2 | 4/4 | 4.4-4.7 m | 4-8 deg |
+| 0.4 | 4/4 | 6.7-7.6 m | 4-5 deg |
+
+Real-time (no lockstep, wall-clock paced, default alpha 0.4), N=3 per row:
+
+| scenario | result |
+|---|---|
+| flat walk vx 0.12, 30 s | 3/3, 7.6-8.0 m |
+| flat walk vx 0.30, 30 s | 3/3, 13.2-13.4 m (~0.45 m/s) |
+| lateral push 50 N / 150 N / 200 N x 0.2 s at t=10 s (while walking) | 3/3 each |
+| lateral push 100 N | 2/3 (one fell at 4.1 s, before the push) |
+| crouch 0.62 -> 0.52 -> 0.70 m (standing) | 4/5 (one fell at 3.0 s); ends at z=0.724 |
+| stairs (blind walk, vx 0.3, 40 s) | **0/5**, fall at 6.0-7.4 s at the first step (x about 1.4 m) |
+
+Notes: push totals 11/12 across 50-200 N (a 200 N 0.2 s push is a 40 N*s impulse). Stairs still fail:
+the controller has no terrain perception, it walks blind into the first riser. Free-run scripts:
+tools/wbmpc_centroidal_free.py and tools/wbmpc_centroidal_free_scenarios.py (push / crouch / stairs).
+This supersedes the earlier "lockstep is fragile" section: lockstep was a diagnostic tool, not the fix.
