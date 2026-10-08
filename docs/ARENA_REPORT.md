@@ -987,6 +987,33 @@ frame by frame, a focused follow-up now that the failure is traced to a specific
 than "the QP sometimes fails." This is the most precise root-cause finding of this investigation pass across
 all three classical controllers.
 
+**Went one layer deeper still: it is not a single blow-up, it is accumulating drift across step cycles.**
+Printed `x_now` (the CoM position and angular momentum relative to the stance ankle fed into the LIP planner)
+every control step, not just at the failure. At the very first step after the walking transition, `pCOM.x()`
+starts at a modest **+0.16 m**. Across roughly ten step cycles (~9 s), it drifts steadily down through zero
+and past it, reaching **-0.43 m** right before the clamp-masked jump documented above - a small, consistent
+per-cycle bias (~-0.06 m/cycle) compounding rather than a single numerical event. The raw (pre-rotation,
+pre-clamp) planner footstep output tracks this: ~-1.0 m in the earliest cycles shown, shrinking toward -0.3 m
+as the drift grows - large corrective steps throughout, not a sudden spike.
+
+Tried the most direct fix this diagnosis suggests - tighter foot-placement tracking should reduce the
+per-cycle error that accumulates. Doubled the swing-foot QP tracking gains
+(`qp/OutputKP`'s `swx`/`swy` terms, 300 to 600, in `config_18dof/walking_config.yaml`) and reran: **no change**
+- falls at t=7.65 s, trajectory numerically identical up to t=7.0 s. This makes sense in hindsight: the drift
+accumulates gradually and these gains govern instantaneous tracking of an already-computed target, not the
+target computation itself, so a stiffer QP doesn't touch the actual source of the per-cycle bias.
+
+**Conclusion for RoMoCo:** the failure is a slow, ~10-cycle accumulation of stance-relative CoM tracking error
+that the controller's own foot-placement correction never fully cancels, until the LIP model's small-error
+assumption breaks down and the demanded correction exceeds what one step can deliver - at which point the
+hardcoded clamp converts that into the instantaneous target jump that finally shows up as PrimalInfeasible.
+This is a genuine, if slow-building, control-theoretic limitation of how this G1 configuration's whole-body QP
+tracks the reduced-order planner's footstep commands - not a sign error, not a missing config value, and not
+fixable by retuning a gain the normal way. Addressing it for real would mean either an explicit drift-
+correction term in the planner (closing the loop on the LIP model's own small-error-tracking assumption) or
+re-deriving the stance-relative state estimate so it doesn't accumulate bias across switches - genuine
+control-engineering, not arena-side integration work.
+
 **Tried a torque slew-rate limiter as a mitigation - it makes the failure look like real physics, but does
 not prevent it.** Added `Arena.tau_rate_limit` (`arena/world.py`, opt-in, `None` by default) - caps how fast
 the commanded torque can change per step, the same idea as a real motor driver's current-rate limit, without
