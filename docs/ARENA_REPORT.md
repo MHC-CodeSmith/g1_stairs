@@ -657,6 +657,19 @@ formulation) or RoMoCo have one yet (see their walk/stairs results above). Attem
 would fail for the identical underlying reason stairs does, not reveal anything new, so it was not run this
 pass; it becomes meaningful once one of them actually walks on flat ground first.
 
+**Checked GuilhermeAsura's own characterization of this exact formulation - our result matches his, not an
+integration gap.** His README's `wb_humanoid_mpc` section, read in full: *"The centroidal MPC runs with full
+MuJoCo physics and holds up: base velocity/height are commandable via joystick or GUI... Even so, the
+centroidal sim shows an odd artifact - the robot appears to **drift rather than track cleanly**. Being the
+best-performing MPC implementation tested doesn't mean the result is fully convincing."* That is precisely what
+this arena found too (below): standing holds, but commanded velocity produces a small drift rather than real
+tracked locomotion - not a regression from his result, a reproduction of it. For whole-body dynamics, his
+README: *"thrashes instead of walking, and this reproduces with full MuJoCo physics, not just the
+kinematic-only dummy-sim. A real-time thread-priority warning (OCS2 requesting `SCHED_FIFO`, rejected for lack
+of `CAP_SYS_NICE`) is a plausible but unconfirmed cause."* We tested that exact hypothesis directly (documented
+above: `--cap-add=SYS_NICE --ulimit rtprio=99`, identical result to the millisecond) and ruled it out
+definitively - going further than GuilhermeAsura's own "unconfirmed" note, not falling short of it.
+
 **Checked whether the centroidal formulation walks under a gentler, ramped command instead of an instant
 step.** `wb_humanoid_mpc`'s own README demonstrates its whole-body MPC via an **interactive joystick/GUI**
 ("Robot Base Controller GUI" and an Xbox controller), not a programmatic instant step - a human analog stick
