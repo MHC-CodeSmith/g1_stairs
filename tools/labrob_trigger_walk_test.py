@@ -9,6 +9,10 @@ PERIOD = float(sys.argv[1]) if len(sys.argv) > 1 else 1.5
 
 arena = Arena(terrain="flat", render=False)
 pol = Labrob()
+if os.environ.get("UNLIMITED"):
+    arena.tau_limit[:] = 1e6
+    import mujoco
+    arena.model.actuator_ctrllimited[:] = 0; arena.model.actuator_forcelimited[:] = 0
 arena.reset(base_z=STANDING_BASE_Z, joint_pos=STANDING_POSE)
 st = arena.state()
 pol.reset(st)

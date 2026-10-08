@@ -31,7 +31,7 @@ for k in range(n):
         fall_t = st.t
     if k % 50 == 0:
         log.append((round(t,2), round(float(st.base_pos[2]),4), round(float(st.base_pos[0]),4), fall_t))
-    if 7.30<t<7.40 and k%2==0:
+    if k%500==0 or (7.30<t<7.40 and k%2==0):
         j=pol.joints.index("left_shoulder_roll_joint"); j2=pol.joints.index("left_shoulder_pitch_joint"); j3=pol.joints.index("left_elbow_joint")
         print("L t=%.3f tauSR=%.1f tauSP=%.1f tauEl=%.1f qSR=%.3f qdSR=%.3f z=%.4f"%(t,pol.tau_ext[j],pol.tau_ext[j2],pol.tau_ext[j3],st.q[arena.joint_names.index("left_shoulder_roll_joint")] if False else st.get(st.q,pol.joints)[j],st.get(st.qd,pol.joints)[j],st.base_pos[2]),flush=True)
     arena.step_physics(1)

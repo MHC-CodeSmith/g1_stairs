@@ -1592,3 +1592,29 @@ the same time for every K, i.e. without being driven correctly by the arena's lo
 Upstream's own page (GuilhermeAsura/humanoid_repos_eval) only claims the scripted clip "stays upright"; no duration, disturbance or
 velocity numbers. So RoMoCo here is: sim-time bug fixed, mechanism of the fall characterised (lateral topple at the handover plus
 step-to-step oscillation), not solved. Script: tools/romoco_free.py (env RAMP0, POSE, BASEZ, DT, DAMP, UPPER, NATIVE).
+
+## labrob, second diagnosis round (the single-tick blow-up is an extreme QP solution, not a solver glitch)
+
+Instrumenting the WBC QP (qpOASES, `WholeBodyController::compute_inverse_dynamics`) at the tick where the shoulder torque jumps
+(sim t=7.35 s, 1.5 s trigger period, SingleSupport):
+
+- All inputs are smooth across the tick (foot errors, CoM acceleration demand, hand references, wrist-force estimates = 0).
+- The QP solution norm jumps from 237 to 7542 in ONE tick while qpOASES reports `SUCCESSFUL_RETURN` (nWSR=12). The next ticks go to
+  `RET_...` infeasible/limit statuses (nWSR=200) and the controller falls back to the previous solution, then to zero.
+- The joint with the extreme acceleration switches from the swing-leg `right_ankle_roll` (already -113 to -116 rad/s^2, growing for
+  several ticks) to `left_shoulder_roll` at **-5698 rad/s^2** (its own bound allows about +-18000 rad/s^2: the limits are on the velocity
+  increment per tick, so they do not constrain the solution).
+- A **cold start** (`LABROB_QP_COLD=1`, `qp_.init` every tick) gives the same |x| = 7542.37 at that tick: it is the optimum of the QP as
+  posed, not a hot-start numerical error.
+
+Things that do NOT fix it (3 trigger periods 1.5 / 1.0 / 3.0 s, one run each; falls stay at 7.5-7.7 / 3.8-4.0 / 5.9-6.3 s):
+cold start every tick; Tikhonov regularisation of the joint accelerations in the WBC Hessian
+(`LABROB_QDDOT_REG` 1e-6 ... 1e-3); removing the arena torque limits (`UNLIMITED=1`; the commanded torques before the event are < 40 Nm);
+holding the previous torque when a joint exceeds 2x its effort limit; replacing arm torques by a PD hold (earlier: falls sooner);
+a low-pass on the torque.
+
+Reading: the hard equality constraints (floating-base dynamics + stance-foot acceleration) become nearly incompatible with the
+friction cones and the weakly weighted arm joints, and the QP "pays" with arm accelerations of thousands of rad/s^2. Why the
+swing foot's roll error grows before that (ankle roll accelerating at -115 rad/s^2) is not understood; fixing it would mean
+re-tuning the WBC task weights or its swing-foot task, which I did not do. Knobs kept (all off by default):
+`patches/labrob_wbc_knobs.patch` (LABROB_QP_COLD, LABROB_QDDOT_REG), arena env LABROB_ALPHA / LABROB_LIMIT_MARGIN / LABROB_ARM_HOLD.

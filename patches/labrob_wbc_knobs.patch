@@ -1,0 +1,64 @@
+diff --git a/include/QpOASESSolver.hpp b/include/QpOASESSolver.hpp
+index 1fea7df..8ca85d1 100644
+--- a/include/QpOASESSolver.hpp
++++ b/include/QpOASESSolver.hpp
+@@ -1,4 +1,7 @@
+ #pragma once
++#include <iostream>
++#include <cmath>
++#include <cstdlib>
+ 
+ #include <Eigen/Core>
+ #include <qpOASES.hpp>
+@@ -111,7 +114,7 @@ class QpOASESSolver {
+ 
+     int nWSR = max_wsr_;
+     qpOASES::returnValue status;
+-    if (!initialized_) {
++    if (!initialized_ || std::getenv("LABROB_QP_COLD")) {
+       status = qp_.init(H_aug_.data(), g_aug_.data(), A_aug_.data(),
+                          lb_aug_.data(), ub_aug_.data(),
+                          lbA_aug_.data(), ubA_aug_.data(), nWSR);
+diff --git a/src/WalkingManager.cpp b/src/WalkingManager.cpp
+index f5e985f..6daf114 100644
+--- a/src/WalkingManager.cpp
++++ b/src/WalkingManager.cpp
+@@ -776,7 +776,7 @@ WalkingManager::update(
+ 
+     // IF STANDING, ADD STEPS TO START WALKING AGAIN OR IF DOUBLE SUPPORT, REMOVE STEPS TO GO BACK TO STANDING
+ 
+-    if (switchWalkingState && true){
++    if (switchWalkingState && false){
+         double yaw_angle = rpyFromQuaternion(robot_state.orientation).z();
+         if (walking_data_.getWalkingState() == WalkingState::Standing) {
+             walking_data_.addSteps(
+@@ -803,7 +803,7 @@ WalkingManager::update(
+     std::chrono::time_point<std::chrono::system_clock> end_coop_planner;
+     bool coop_planner_ran = false;
+ 
+-    if ((switchWalkingState && false) || (false && t_msec_ ==5000 && !coop_walking_active_))
++    if (switchWalkingState || (false && t_msec_ ==5000 && !coop_walking_active_))
+     {
+         switchWalkingState = false;
+         std::cout << "[COOP] Walking triggered at t=" << t_msec_
+diff --git a/src/WholeBodyController.cpp b/src/WholeBodyController.cpp
+index c0a3233..ace8a75 100644
+--- a/src/WholeBodyController.cpp
++++ b/src/WholeBodyController.cpp
+@@ -1,3 +1,5 @@
++#include <cstdlib>
++#include <iostream>
+ //
+ // Created by mmaximo on 20/02/24.
+ //
+@@ -422,6 +424,10 @@ WholeBodyController::compute_inverse_dynamics(
+ 
+   // H_wbc: update acceleration block (force blocks already set in constructor)
+   H_wbc_.topLeftCorner(nv, nv) = H_acc_;
++  if (const char* rg = std::getenv("LABROB_QDDOT_REG")) {
++    const double w = std::atof(rg);
++    for (int i = 6; i < nv; ++i) H_wbc_(i, i) += w;   // Tikhonov on joint accelerations
++  }
+   // f_wbc: update acceleration part (force part stays zero)
+   f_wbc_.head(nv) = f_acc_;
+ 
