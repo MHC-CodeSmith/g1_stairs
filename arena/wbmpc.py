@@ -49,7 +49,10 @@ STANDING_POSE = {   # config/command/reference.info's defaultJointState
 STANDING_BASE_Z = 0.7925
 
 
-FILTER_ALPHA = float(os.environ.get("WBMPC_ALPHA", "1.0"))  # 1.0 = off; see wbmpc_centroidal.py
+FILTER_ALPHA = float(os.environ.get("WBMPC_ALPHA", "0.1"))  # whole-body needs a much stronger command low-pass than the centroidal (0.4); 1.0 = off
+
+
+FILTER_MODE = os.environ.get("WBMPC_FILTER_MODE", "both")  # both | q | tau
 
 
 class WbMpc(ArenaPolicy):
@@ -108,7 +111,9 @@ class WbMpc(ArenaPolicy):
         if self._filt is None:
             self._filt = (q_des.copy(), tau.copy())
         qf, tf = self._filt
-        qf += FILTER_ALPHA * (q_des - qf)
-        tf += FILTER_ALPHA * (tau - tf)
+        aq = FILTER_ALPHA if FILTER_MODE in ("both", "q") else 1.0
+        at = FILTER_ALPHA if FILTER_MODE in ("both", "tau") else 1.0
+        qf += aq * (q_des - qf)
+        tf += at * (tau - tf)
         self.tau_ext = tf.copy()
         return qf.copy()

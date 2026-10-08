@@ -1618,3 +1618,24 @@ friction cones and the weakly weighted arm joints, and the QP "pays" with arm ac
 swing foot's roll error grows before that (ankle roll accelerating at -115 rad/s^2) is not understood; fixing it would mean
 re-tuning the WBC task weights or its swing-foot task, which I did not do. Knobs kept (all off by default):
 `patches/labrob_wbc_knobs.patch` (LABROB_QP_COLD, LABROB_QDDOT_REG), arena env LABROB_ALPHA / LABROB_LIMIT_MARGIN / LABROB_ARM_HOLD.
+
+## wb_humanoid_mpc whole-body: standing fixed by a stronger command low-pass
+
+Per-step logging of the whole-body run (standing, vx=0) shows the same mechanism as the centroidal one: from ~0.3 s the knee /
+hip / ankle targets alternate in sign and grow by ~1.4x per 10 ms sample (knee des-q: +0.036, -0.056, +0.069, -0.093, +0.200, -0.288,
++0.294 rad ...), the base sinks and the robot collapses at 0.85 s. The earlier test with the centroidal's filter (alpha 0.4 / 0.2) was
+too weak for this formulation. With the same first-order command low-pass at **alpha 0.1** (now the default in arena/wbmpc.py,
+env WBMPC_ALPHA; 1.0 = off):
+
+| test | before | now |
+|---|---|---|
+| standing 30 s, vx=0 | fell at 0.8-2.3 s (every run) | **5/5** (also 8/8 at alpha 0.1 / 0.05 / 0.02 / 0.01) |
+| walking vx 0.12, 30 s | fell < 2 s | 0/5, fall at 6.4-6.8 s after 0.1-1.1 m |
+| walking vx 0.06 | - | 0/3, fall at 6.9 / 7.1 / 9.2 s after 0.6-1.0 m |
+| push 100 N while walking | - | 0/4 (the walk itself falls first) |
+| crouch (0.62 / 0.52 / 0.70 m) | fell before the first change | no fall in 4/4 but the height command is not followed (z stays 0.79 m) |
+
+Filtering only the position target (alpha 0.2 / 0.1 / 0.05) or only the feed-forward torque does not work (falls at 1.2-2.4 s, 6.6-7.0 s at best
+for q-only alpha 0.05): both must be filtered. Walking, rough and stairs remain unsolved for this formulation; the walking
+failure at ~6.5 s is not characterised yet. Scripts: tools/wbmpc_wholebody_free.py (standing) and
+tools/wbmpc_wholebody_free_scenarios.py (walk / push / crouch / rough / stairs).
