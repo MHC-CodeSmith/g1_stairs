@@ -926,6 +926,27 @@ documented above) looks different in character - a ~0.8s controlled-looking topp
 between 0 and a 139 Nm ceiling rather than a single explosive spike - consistent with genuine constraint
 infeasibility producing degenerate-but-bounded solutions, not the same failure mode as labrob's blow-up.
 
+**Tried a torque slew-rate limiter as a mitigation - it makes the failure look like real physics, but does
+not prevent it.** Added `Arena.tau_rate_limit` (`arena/world.py`, opt-in, `None` by default) - caps how fast
+the commanded torque can change per step, the same idea as a real motor driver's current-rate limit, without
+lowering the torque ceiling itself. Swept several values on labrob's walk:
+
+| tau_rate_limit | fell? | fall time | character |
+|---|---|---|---|
+| none (baseline) | yes | t=11.65s | violent launch, vel_z +4.3 m/s |
+| 2000 Nm/s | yes | t=11.31s | no launch, looks like a normal topple |
+| 500 Nm/s | yes | t=11.54s | same, ordinary-looking fall |
+| 200 Nm/s | yes | t=11.20s | same, 0.24 m covered (slightly further) |
+| 100 Nm/s | yes | t=8.49s | falls *earlier* - limiting too hard also blunts the controller's own legitimate corrections |
+
+Every value still falls - the slew limiter changes *how* it falls (a believable topple instead of a
+numerical launch into the air), not *whether*. Set to 500 Nm/s for the GIF above and in
+`tools/labrob_walk_trigger_media.py` since it is the most honest-looking representation of the same
+underlying failure, but this is a presentation fix, not a functional one. The real blocker remains the
+WBC/footstep-planner's behavior a few steps into real stepping - likely related to the same `eh=0,0`
+zero-force-target condition noted above (the coop planner was designed around a human pulling the robot's
+hand, and a zero-force "glide" default may not be a well-conditioned target for it to sustain indefinitely).
+
 ### It's not just us: walking is an open problem for all three classical repos
 
 Given both wb_humanoid_mpc formulations and RoMoCo failed to produce real walking in this arena, it is worth

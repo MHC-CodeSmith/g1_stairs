@@ -258,6 +258,7 @@ class Arena:
         lim = np.array([m.jnt_actfrcrange[j] for j in jid])
         limited = np.array([m.jnt_actfrclimited[j] for j in jid]).astype(bool)
         self.tau_limit = np.where(limited, lim[:, 1], 1e6)
+        self.tau_rate_limit = None  # Nm/s; None = no slew limit (default, matches prior behavior)
         self.pelvis = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "pelvis")
         self.torso = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "torso_link")
         self.hold_q = np.array([HOLD_POSE.get(n, 0.0) for n in self.joint_names])
@@ -284,6 +285,7 @@ class Arena:
         self.tau_ext = np.zeros(len(self.joint_names))  # raw torque, added on top of the PD term;
         self.t = 0.0                                    # lets a torque-output controller (e.g. labrob's WBC)
         self.push = None                                # drive a subset of joints without PD interference
+        self._prev_cmd_tau = None  # for tau_rate_limit below
 
     def ground_height(self, x, y):
         """Height of terrain below (x, y) from a downward ray (robot geoms excluded)."""
@@ -321,6 +323,15 @@ class Arena:
                 q, qd = d.qpos[self.qadr], d.qvel[self.vadr]
                 tau = self.kp * (self.target - q) - self.kd * qd + self.tau_ext
                 tau = np.clip(tau, -self.tau_limit, self.tau_limit)
+                if self.tau_rate_limit is not None:
+                    # Slew-rate limit on the commanded torque, same idea as a real motor driver's
+                    # current-rate limit - caps how fast a controller can swing from a sane torque to
+                    # a saturated one, without lowering the torque ceiling itself.
+                    if self._prev_cmd_tau is None:
+                        self._prev_cmd_tau = tau.copy()
+                    max_step = self.tau_rate_limit * self.model.opt.timestep
+                    tau = np.clip(tau, self._prev_cmd_tau - max_step, self._prev_cmd_tau + max_step)
+                    self._prev_cmd_tau = tau.copy()
                 ok = self.act_of_joint >= 0
                 d.ctrl[self.act_of_joint[ok]] = tau[ok]
             if self.push is not None:        # one (t0, duration, force xyz) or a list of them

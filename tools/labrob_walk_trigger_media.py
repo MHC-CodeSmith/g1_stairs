@@ -21,6 +21,9 @@ os.makedirs(os.path.join(REPO, "output/media"), exist_ok=True)
 os.makedirs(os.path.join(REPO, "docs/media"), exist_ok=True)
 
 arena = Arena(terrain="flat", render=True)
+arena.tau_rate_limit = 500.0  # Nm/s - prevents the WBC's torque-command blow-up from launching the
+                               # robot; does not fix the underlying fall, just makes it look like real
+                               # physics instead of a numerical explosion. See docs/ARENA_REPORT.md.
 pol = Labrob()
 arena.reset(base_z=STANDING_BASE_Z, joint_pos=STANDING_POSE)
 st = arena.state()
@@ -40,7 +43,6 @@ for k in range(n):
     if not triggered and t >= 2.0:
         pol._wm.trigger_walk()
         triggered = True
-        print(f"triggered at t={t:.2f}", flush=True)
     st = arena.state()
     arena.set_targets(pol.joints, pol.act(st, Command()), pol.kp, pol.kd)
     arena.set_external_torque(pol.joints, pol.tau_ext)
@@ -50,8 +52,7 @@ for k in range(n):
         frames.append(arena.render(**CAM))
     arena.step_physics(1)
 
-print(f"frames: {len(frames)}, duration: {len(frames)/FPS:.2f}s", flush=True)
-mp4 = os.path.join(REPO, "output/media", "labrob_walk_trigger3.mp4")
+mp4 = os.path.join(REPO, "output/media", "labrob_walk_trigger4.mp4")
 import imageio.v2 as iio
 iio.mimsave(mp4, frames, fps=FPS, macro_block_size=8)
 gif(mp4, os.path.join(REPO, "docs/media", "labrob_walk_trigger.gif"), (0.0, len(frames)/FPS))
