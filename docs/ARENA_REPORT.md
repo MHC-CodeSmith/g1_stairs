@@ -1282,6 +1282,55 @@ to `Mode::Walking`, and its planner produces a real footstep target - it is the 
 Of the two, RoMoCo's failure is the narrower, more specific one to chase next: the standing controller, the
 transition logic and the footstep planner are all already working.
 
+## Push and crouch, retested for wb_humanoid_mpc centroidal after the RobotState time fix
+
+The original push (50 N, instant fall before the push even fired) and crouch (0.245 m error at the 0.52 m
+target) results for this formulation, documented earlier in this report, both predate the `RobotState::time_`
+fix. Since that bug corrupted the MPC's observation on every single control step (not just the gait-schedule
+logic it was found through), every prior result for this formulation needed rechecking, not just the walk
+tests already redone above.
+
+**Crouch, same schedule as before (height 0.80->0.62->0.52->0.70, t=0/2/6/10s, 14 s total):**
+
+| | before the fix | after the fix |
+|---|---|---|
+| fell? | no | no |
+| min height error at the 0.52 m target | 0.245 m | **0.066 m** - 3.7x tighter |
+| final height (0.70 m target) | 0.763 m | 0.696 m - within 4 mm |
+
+**Push, swept 50-1000 N lateral at t=3.0-3.2s (same mechanism as the push tests elsewhere in this report):**
+
+| force | fell? | fall time | notes |
+|---|---|---|---|
+| 50 N | yes | **t=9.12 s** | survives the push itself and ~6 s of continued standing before eventually destabilizing - not a push failure, something else catches up with it later |
+| 75 N | yes | t=4.14 s | survives the push instant, falls ~1 s later |
+| 100 N | yes | t=4.81 s | same pattern |
+| 150 N | yes | t=4.01 s | same pattern |
+| 200 N | yes | t=3.27 s | fails almost immediately at the push |
+| 500 N | yes | t=3.38 s | immediate |
+| 1000 N | yes | t=3.35 s | immediate |
+
+Before the fix, this formulation had not been push-tested at all (only the walk/stairs gap was documented as
+"not yet tested"). It still does not match the best original policies' 1000 N (g1_body, g1dwaq_stairs, sonic),
+but 50 N survived for 9 full seconds rather than failing outright - a real, measurable improvement directly
+attributable to the same uninitialized-time bug fix that unlocked walking, since a corrupted MPC observation on
+every step would have been degrading balance recovery quality throughout, not just gait scheduling.
+
+## labrob push, retested with the real coop-planner trigger
+
+Earlier push results for labrob used the repeated-trigger workaround, before the real root cause
+(`reactive_standing` inverted) was found. Retested with the current, mechanism-correct single trigger plus
+the 500 Nm/s torque slew limiter, pushing mid-walk (t=4.0s, after `trigger_walk()` at t=2.0s):
+
+| push force | fell? | fall time (push at t=4.0s) |
+|---|---|---|
+| 8 N | yes | t=5.28 s (1.28 s after the push) |
+| 50 N | yes | t=4.67 s (0.67 s after the push) |
+
+Even 8 N - the exact threshold GuilhermeAsura's own README names ("any scripted external force, down to a
+light 8N nudge, destabilizes the controller into a physics-breaking NaN") - destabilizes it here too,
+independently reproducing his finding with a real measurement rather than citing it secondhand.
+
 ## Stairs test, retried for the two controllers that now actually walk
 
 With labrob and wb_humanoid_mpc centroidal both producing real forward steps after the fixes documented
