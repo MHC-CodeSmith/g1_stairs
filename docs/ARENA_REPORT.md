@@ -1282,6 +1282,35 @@ to `Mode::Walking`, and its planner produces a real footstep target - it is the 
 Of the two, RoMoCo's failure is the narrower, more specific one to chase next: the standing controller, the
 transition logic and the footstep planner are all already working.
 
+## Stairs test, retried for the two controllers that now actually walk
+
+With labrob and wb_humanoid_mpc centroidal both producing real forward steps after the fixes documented
+above, retested both against the actual stairs terrain (`STAIRS["start"] = 1.2 m`) instead of assuming the
+earlier "doesn't walk far enough" conclusion still held.
+
+| controller | max x reached | reaches the first step (1.2 m)? | fall time |
+|---|---|---|---|
+| labrob (real coop-planner trigger) | 0.10 m | no | t=11.65 s |
+| wb_humanoid_mpc centroidal (ramp t=3-8s) | 0.83 m | no | t=8.24 s |
+| wb_humanoid_mpc centroidal (ramp t=3-14s, slower) | 0.93 m | no | t=7.50 s |
+| wb_humanoid_mpc centroidal (ramp t=1-4s, faster) | 0.93 m | no | t=5.47 s |
+
+![wb_humanoid_mpc centroidal's closest stairs attempt, 0.93 m of 1.2 m needed](media/wbmpc_centroidal_stairs_attempt.gif)
+
+Neither reaches the first step. labrob's result is unchanged from the flat-ground case (it was never going to
+get further on a longer runway - its fall is a fixed-distance limitation, not a time-limited one). The
+centroidal formulation is the interesting case: three different command-ramp shapes (fast, slow, early-start)
+all independently land in the same **0.83-0.93 m band** before falling, regardless of how quickly or slowly
+the commanded velocity ramps up or how much time elapses first. That consistency across different time
+profiles points at a distance- or step-count-triggered instability rather than a timing-sensitive one - the
+same category of finding as RoMoCo's per-cycle CoM drift above, not yet isolated to a specific cause the way
+that one was. Reaching the stairs would need roughly 30-40 cm more sustained distance than this formulation
+currently manages before whatever destabilizes it after ~0.9 m takes effect.
+
+RoMoCo's own stairs attempt was already documented earlier in this report (`max_x=0.465 m`, same underlying
+QP failure as its flat-ground walk test) - included here for completeness: none of the three classical
+controllers reach the first step of this arena's stairs in their current state.
+
 ## What could not be run, and why
 
 | repository | status | reason |
