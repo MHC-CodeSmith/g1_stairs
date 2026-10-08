@@ -1486,3 +1486,15 @@ One solve is granted every N control steps (dt=0.002), flat terrain, 30 s.
 Conclusion: lockstep is not fully deterministic (the multithreaded solver still varies), and sustained walking is a
 fragile region (about 2/3 at vx=0.12 with 24 steps/solve), not a fix. The yaw-spin fall at step onset remains
 unresolved and is reported as such. No robust walking claim is made for this controller.
+
+### Lockstep follow-up (24 steps/solve, vx 0.12, push at t=10 s for 0.2 s, lateral)
+
+| push | walked 30 s | notes |
+|---|---|---|
+| 0 N (3 more runs) | 0/3 | all fell at 2.3-2.4 s (yaw spin); with the earlier 3 runs the flat total is 2/6 |
+| 50 N | 1/3 | 2 fell at ~2 s (before the push); 1 survived the push, 5.8 m |
+| 100 N | 0/3 | 2 fell at ~11 s (just after the push, 2.1-2.3 m); 1 fell at 1.2 s |
+
+Overall the lockstep result does not hold up: sustained walking occurs in about a third of runs, and push
+recovery cannot be separated from the onset fall. Crouch and stairs were not run under lockstep for this reason.
+Script: tools/wbmpc_centroidal_lockstep.py <vx> <steps_per_solve> [push_N].

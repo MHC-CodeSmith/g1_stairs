@@ -11,6 +11,8 @@ arena.reset(base_z=STANDING_BASE_Z, joint_pos=STANDING_POSE)
 st = arena.state(); pol.reset(st)
 mpc = pol._mpc
 mpc.set_lockstep(True)
+PUSH = float(sys.argv[3]) if len(sys.argv)>3 else 0.0
+if PUSH: arena.push = (10.0, 0.2, (0.0, PUSH, 0.0))
 dt = arena.model.opt.timestep
 cnt = SPS   # solve on first step
 fall_t=None; maxx=0.0; maxyaw=0.0
@@ -33,5 +35,5 @@ for k in range(int(30.0/dt)):
     if fall_t is None and arena.fallen(st): fall_t = st.t
     arena.step_physics(1)
     if fall_t is not None and t > fall_t+0.3: break
-print("RESULT_JSON:"+json.dumps({"vx":VX,"steps_per_solve":SPS,"fell":fall_t is not None,"fall_t":fall_t,"max_x":round(maxx,3),"max_yaw_deg":round(maxyaw,1),"sim_t":round(t,1)}), flush=True)
+print("RESULT_JSON:"+json.dumps({"vx":VX,"push":PUSH,"steps_per_solve":SPS,"fell":fall_t is not None,"fall_t":fall_t,"max_x":round(maxx,3),"max_yaw_deg":round(maxyaw,1),"sim_t":round(t,1)}), flush=True)
 os._exit(0)
