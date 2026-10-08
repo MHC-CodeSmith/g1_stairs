@@ -92,6 +92,7 @@ class WbMpc(ArenaPolicy):
             tuple(float(v) for v in st.base_quat),
             tuple(float(v) for v in st.lin_vel_b),
             tuple(float(v) for v in st.ang_vel_b),
+            float(st.t),
         )
 
         q_des = np.array([action[n]["q_des"] for n in self.joints])

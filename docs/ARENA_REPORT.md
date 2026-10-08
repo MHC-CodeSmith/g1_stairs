@@ -605,6 +605,17 @@ quickly rather than settling into a walking gait - most likely because the contr
 logic was never actually triggered to start stepping within the time it has before falling. Both the walk and
 stairs attempts fail for the same underlying reason as the push test, not a new one.
 
+**Also applied the `RobotState::time_` fix to this (whole-body) bridge - no change.** Same uninitialized-time
+bug exists in `bridge/wbmpc/bridge.cpp` (identical pattern, found and fixed in the centroidal bridge first -
+see that section below). Applied the identical fix (`setTime()` on both construction sites,
+`computeJointControlAction(t, ...)` with the real simulated time) and reran pure standing: **falls even
+faster**, at t=1.27s versus the previously documented ~1.7s - within the noise of an already-unstable system,
+not an improvement. This confirms the whole-body formulation's instability is a separate, deeper issue from
+the gait-engagement bug (consistent with the CAP_SYS_NICE test above and GuilhermeAsura's own "thrashes"
+characterization) - the time fix was necessary but not sufficient, and only actually mattered for the
+centroidal formulation, which is stable enough in standing for the gait state machine to be the limiting
+factor in the first place.
+
 **Fix found: use the centroidal formulation instead.** wb_humanoid_mpc ships two OCS2 formulations in the
 same repo - `humanoid_wb_mpc` (full joint-space dynamics, bridged above) and `humanoid_centroidal_mpc`
 (center-of-mass momentum + full kinematics, lighter). GuilhermeAsura/humanoid_repos_eval's own evaluation

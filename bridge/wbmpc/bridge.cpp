@@ -58,6 +58,7 @@ class PyWbMpc {
   void start(const py::dict& joint_pos, const std::array<double, 3>& base_pos,
              const std::array<double, 4>& base_quat_wxyz) {
     robot::model::RobotState initState = make_state(joint_pos, {}, base_pos, base_quat_wxyz, {0, 0, 0}, {0, 0, 0});
+    initState.setTime(0.0);
     controllerPtr_->startMpcThread(initState);
   }
 
@@ -65,10 +66,14 @@ class PyWbMpc {
 
   py::dict update(const py::dict& joint_pos, const py::dict& joint_vel, const std::array<double, 3>& base_pos,
                    const std::array<double, 4>& base_quat_wxyz, const std::array<double, 3>& lin_vel,
-                   const std::array<double, 3>& ang_vel) {
+                   const std::array<double, 3>& ang_vel, double t) {
+    // RobotState::time_ has no default member initializer and was never set here - see
+    // docs/ARENA_REPORT.md's wb_humanoid_mpc centroidal section for the full diagnosis (same bridge
+    // pattern, same bug, found there first).
     robot::model::RobotState state = make_state(joint_pos, joint_vel, base_pos, base_quat_wxyz, lin_vel, ang_vel);
+    state.setTime(t);
     robot::model::RobotJointAction action(robotDescription_);
-    controllerPtr_->computeJointControlAction(0.0, state, action);
+    controllerPtr_->computeJointControlAction(t, state, action);
 
     py::dict out;
     for (const auto& name : robotDescription_.getJointNames()) {
@@ -123,5 +128,5 @@ PYBIND11_MODULE(wbmpc_bridge, m) {
       .def("start", &PyWbMpc::start, py::arg("joint_pos"), py::arg("base_pos"), py::arg("base_quat_wxyz"))
       .def("ready", &PyWbMpc::ready)
       .def("update", &PyWbMpc::update, py::arg("joint_pos"), py::arg("joint_vel"), py::arg("base_pos"),
-           py::arg("base_quat_wxyz"), py::arg("lin_vel"), py::arg("ang_vel"));
+           py::arg("base_quat_wxyz"), py::arg("lin_vel"), py::arg("ang_vel"), py::arg("t"));
 }
