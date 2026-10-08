@@ -1331,6 +1331,27 @@ Even 8 N - the exact threshold GuilhermeAsura's own README names ("any scripted 
 light 8N nudge, destabilizes the controller into a physics-breaking NaN") - destabilizes it here too,
 independently reproducing his finding with a real measurement rather than citing it secondhand.
 
+## wb_humanoid_mpc centroidal: push, crouch and flat walking, N=5 trials per condition
+
+The single-run push/crouch numbers above were taken before this formulation's run-to-run variance was
+understood (its MPC thread is paced by wall-clock time, so identical commands give different outcomes).
+Re-ran each condition five times, fresh process per trial, unpaced arena loop (`tools/` scripts as in the
+sections above):
+
+| test | outcomes over 5 trials |
+|---|---|
+| push 50 N (t=3.0-3.2 s, standing) | **5/5 stay up for the full 10 s** - the earlier single-run "falls at 9.1 s" was variance |
+| push 100 N | 5/5 fall, t = 4.44-4.75 s (about 1.4 s after the push) |
+| push 200 N | 5/5 fall, t = 3.69-3.82 s (about 0.6 s after the push) |
+| crouch (0.80 -> 0.62 -> 0.52 -> 0.70 m, 14 s) | 3/5 complete without falling, min error at the 0.52 m target 0.064 / 0.070 / 0.071 m; 2/5 fall before reaching the 0.52 m phase |
+| flat walk, ramp 0 -> 0.3 m/s over t=3-8 s, 16 s | 5/5 eventually fall (t = 7.05 / 7.34 / 7.98 / 8.14 / 9.50 s); distance covered 0.77 / 1.02 / 1.14 / 1.16 / **2.01 m** |
+
+So the honest summary for this formulation after the time fix: push robustness is real but small (50 N yes,
+100 N no, consistently); crouch tracking is about 4x tighter than before the fix (about 0.07 m vs 0.245 m) but
+fails outright in 2 of 5 runs; it walks 0.8-2.0 m on flat ground before falling every time. The remaining
+failure after a few steps is not yet root-caused. Earlier single-run numbers in this report for this
+formulation should be read as examples from these distributions, not as point estimates.
+
 ## Stairs test, retried for the two controllers that now actually walk
 
 With labrob and wb_humanoid_mpc centroidal both producing real forward steps after the fixes documented
