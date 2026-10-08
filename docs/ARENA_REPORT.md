@@ -721,6 +721,48 @@ footstep-target initialization that normally rides along with a schedule change 
 `ProceduralMpcMotionManager` itself rather than around it) is still blocking real stepping. Walking this
 formulation remains unresolved, but the next concrete step is now narrow and specific rather than open-ended.
 
+**Found the actual bug behind all of the above, and it changes everything: `RobotState::time_` is never
+initialized.** User pushed to keep going rather than accept `force_gait` as the ceiling. Added a raw,
+unconditional debug print at the top of `ProceduralMpcMotionManager::preSolverRun` (rebuilt just
+`humanoid_common_mpc`, 10-11s) to see the actual values feeding the "don't change gait for 0.2s" gate that
+should trivially pass - and `initTime` printed as **subnormal garbage** (`6.95271e-310`, `4.94066e-324`, a
+different nonsense value almost every call) instead of an advancing simulation time in seconds. The gate
+`initTime > lastGaitChangeTime_ + 0.2` can never pass against a value like that, explaining every result in
+this section above.
+
+Traced it to the source: `computeJointControlAction(scalar_t time, ...)`'s own `time` **parameter is
+discarded** - `updateMpcObservation()` sets `mpcObservation.time = robotState.getTime()` instead, reading it
+off the `RobotState` argument. `RobotState.h` declares `scalar_t time_;` with **no default member
+initializer**, and its constructor (`RobotState.cpp`) never assigns it either - every `RobotState` this bridge
+ever constructed carried uninitialized memory as its time, which flowed straight into the MPC's own
+observation, then into every `preSolverRun` call via `initTime`. This also fully explains the earlier
+`force_gait` result: forcing the gait schedule worked once, but the *next* `preSolverRun` call still saw
+garbage `initTime` and could never progress the schedule further on its own, which is exactly the "stuck just
+as before" symptom documented above.
+
+**Fixed both construction sites in `bridge/wbmpc_centroidal/bridge.cpp`**: `start()` now calls
+`initState.setTime(0.0)`, and `update()` takes a new `t` parameter (wired to `arena/wbmpc_centroidal.py`'s
+`st.t`, the real simulated time) and calls `state.setTime(t)` before handing the state to
+`computeJointControlAction(t, state, action)`. Rebuilt `humanoid_common_mpc` and the bridge. Result, instant
+step command (same test as all the `force_gait` attempts above, no ramp):
+
+```
+ProceduralMpcMotionManager: Increasing to gait:slow_walk
+ProceduralMpcMotionManager: Increasing to gait:walk
+```
+
+**The automatic gait state machine works, for the first time this entire pass.** With an instant `vx=0.3`
+step: falls at t=2.37s, but covers **0.69 m** of real forward progress first - actual stepping, not drift.
+With a gentle ramp (0 to 0.3 m/s over t=3-8s, same shape as the earlier `force_gait` ramp test): falls later,
+at t=6.16s, covering **0.65 m**. A slower ramp (0 to 0.15 m/s) falls earlier (t=4.49s) despite the lower
+target speed, covering 0.80 m - command shape still matters, but every variant now produces genuine multi-step
+walking where every previous attempt produced at most 5 cm of drift with the gait permanently stuck in
+"stance." This is a different order of result from everything above it in this report: not a workaround, the
+actual designed mechanism now functions as intended. It still doesn't yet produce *sustained* walking - the
+eventual fall is a separate, not-yet-investigated failure mode now that the gait-engagement bug is out of the
+way - but "walks ~0.7 m before falling, with the real gait scheduler driving it" replaces "never leaves
+stance" as this formulation's result.
+
 **Also retested whether RoMoCo's hardcoded friction-cone geometry was simply too conservative.**
 `config_18dof/walking_config.yaml`'s `friction:` block comments its own `Lfront`/`Lback` values as not yet at
 their stated maximum (`Lfront: 0.1 #max 0.12`, `Lback: -0.04 #max -0.05`; `W` was already at its stated max of

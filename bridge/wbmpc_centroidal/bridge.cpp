@@ -82,6 +82,7 @@ class PyCentroidalMpc {
   void start(const py::dict& joint_pos, const std::array<double, 3>& base_pos,
              const std::array<double, 4>& base_quat_wxyz) {
     robot::model::RobotState initState = make_state(joint_pos, {}, base_pos, base_quat_wxyz, {0, 0, 0}, {0, 0, 0});
+    initState.setTime(0.0);
     controllerPtr_->startMpcThread(initState);
   }
 
@@ -89,10 +90,19 @@ class PyCentroidalMpc {
 
   py::dict update(const py::dict& joint_pos, const py::dict& joint_vel, const std::array<double, 3>& base_pos,
                    const std::array<double, 4>& base_quat_wxyz, const std::array<double, 3>& lin_vel,
-                   const std::array<double, 3>& ang_vel) {
+                   const std::array<double, 3>& ang_vel, double t) {
+    // RobotState::time_ has no default member initializer and this bridge's make_state() never called
+    // setTime() - computeJointControlAction()'s own `time` parameter is unused (see
+    // CentroidalMpcMrtJointController::updateMpcObservation, which reads robotState.getTime() instead),
+    // so every observation fed to the MPC had mpcObservation.time left as uninitialized garbage. That
+    // value flows straight into ProceduralMpcMotionManager::preSolverRun's initTime argument, where the
+    // "don't change gait for 0.2s after lastGaitChangeTime_" guard compared it against a real lastGaitChangeTime_
+    // and permanently failed - confirmed by instrumenting preSolverRun directly and seeing subnormal
+    // doubles like 6.95e-310 printed as initTime on every call. See docs/ARENA_REPORT.md.
     robot::model::RobotState state = make_state(joint_pos, joint_vel, base_pos, base_quat_wxyz, lin_vel, ang_vel);
+    state.setTime(t);
     robot::model::RobotJointAction action(robotDescription_);
-    controllerPtr_->computeJointControlAction(0.0, state, action);
+    controllerPtr_->computeJointControlAction(t, state, action);
 
     py::dict out;
     for (const auto& name : robotDescription_.getJointNames()) {
@@ -149,5 +159,5 @@ PYBIND11_MODULE(wbmpc_centroidal_bridge, m) {
       .def("start", &PyCentroidalMpc::start, py::arg("joint_pos"), py::arg("base_pos"), py::arg("base_quat_wxyz"))
       .def("ready", &PyCentroidalMpc::ready)
       .def("update", &PyCentroidalMpc::update, py::arg("joint_pos"), py::arg("joint_vel"), py::arg("base_pos"),
-           py::arg("base_quat_wxyz"), py::arg("lin_vel"), py::arg("ang_vel"));
+           py::arg("base_quat_wxyz"), py::arg("lin_vel"), py::arg("ang_vel"), py::arg("t"));
 }

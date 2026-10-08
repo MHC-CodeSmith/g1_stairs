@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 
 import numpy as np
 
@@ -61,6 +62,17 @@ class CentroidalMpc(ArenaPolicy):
     def reset(self, st):
         joint_pos = {n: float(STANDING_POSE.get(n, 0.0)) for n in self.joints}
         self._mpc.start(joint_pos, (0.0, 0.0, STANDING_BASE_Z), (1.0, 0.0, 0.0, 0.0))
+        # CentroidalMpcRobotSim.cpp (the reference this bridge mirrors) polls ready() after start()
+        # and waits an extra 200ms "to allow MPC policy to initialize" before ever reading a control
+        # action - skipping this left computeJointControlAction() reading from the MRT policy buffer
+        # before the background solver thread's first solve ever completed, which left preSolverRun's
+        # own initTime bookkeeping on a garbage/subnormal value forever after (confirmed by instrumenting
+        # ProceduralMpcMotionManager::preSolverRun directly: initTime printed as ~6.95e-310, and the
+        # "don't change gait for 0.2s" gate comparing against it never passed) - this is why the
+        # automatic gait-promotion state machine never advanced past "stance" in every test this session.
+        while not self._mpc.ready():
+            time.sleep(0.1)
+        time.sleep(0.2)
         self.tau_ext[:] = 0.0
 
     def obs(self, st, cmd):
@@ -79,6 +91,7 @@ class CentroidalMpc(ArenaPolicy):
             tuple(float(v) for v in st.base_quat),
             tuple(float(v) for v in st.lin_vel_b),
             tuple(float(v) for v in st.ang_vel_b),
+            float(st.t),
         )
         q_des = np.array([action[n]["q_des"] for n in self.joints])
         qd_des = np.array([action[n]["qd_des"] for n in self.joints])
