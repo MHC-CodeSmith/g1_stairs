@@ -28,13 +28,16 @@ pol.reset(st)
 
 FPS = 25
 dt = arena.model.opt.timestep
-seconds = 8.0
+seconds = 14.0
 n = int(seconds / dt)
 save_every = max(1, round(1.0 / (dt * FPS)))
 
-RAMP_START, RAMP_END, VX_TARGET = 3.0, 8.0, 0.3
+RAMP_START, RAMP_END, VX_TARGET = 2.0, 5.0, 0.3
 frames = []
 fall_t = None
+# render-safe: step the solver in lockstep (6 steps = 83 Hz, the nominal rate) so slow rendering cannot change MPC timing
+import time as _t
+mpc = pol._mpc; mpc.set_lockstep(True)
 for k in range(n):
     t = k * dt
     if t < RAMP_START:
@@ -46,6 +49,9 @@ for k in range(n):
     cmd = Command(vx=vx, height=STANDING_BASE_Z)
     st = arena.state()
     arena.set_targets(pol.joints, pol.act(st, cmd), pol.kp, pol.kd)
+    if k % 6 == 0:
+        c0 = mpc.solve_count(); mpc.grant_solve(); t0 = _t.monotonic()
+        while mpc.solve_count() == c0 and _t.monotonic() - t0 < 5: _t.sleep(0.0005)
     arena.set_external_torque(pol.joints, pol.tau_ext)
     if fall_t is None and arena.fallen(st):
         fall_t = st.t
