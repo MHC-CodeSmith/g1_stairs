@@ -33,20 +33,22 @@ arena.set_external_torque(pol.joints, pol.tau_ext)
 frames = []
 fall_t = None
 seconds = 3.0
+FPS = 25
+save_every = max(1, round(1.0 / (arena.model.opt.timestep * FPS)))
 for k in range(int(seconds / arena.model.opt.timestep)):
     st = arena.state()
     arena.set_targets(pol.joints, pol.act(st, Command()), pol.kp, pol.kd)
     arena.set_external_torque(pol.joints, pol.tau_ext)
     if fall_t is None and arena.fallen(st):
         fall_t = st.t
-    if k % 10 == 0:
+    if k % save_every == 0:
         frames.append(arena.render(**CAM))
     arena.step_physics(1)
 
 mp4 = os.path.join(REPO, "output/media", "romoco_standing.mp4")
 import imageio.v2 as iio
-iio.mimsave(mp4, frames, fps=25, macro_block_size=8)
-gif(mp4, os.path.join(REPO, "docs/media", "romoco_standing.gif"), (0.0, seconds))
+iio.mimsave(mp4, frames, fps=FPS, macro_block_size=8)
+gif(mp4, os.path.join(REPO, "docs/media", "romoco_standing.gif"), (0.0, len(frames) / FPS))
 print("fell" if fall_t is not None else "no fall", fall_t, flush=True)
 import os as _os
 _os._exit(0)

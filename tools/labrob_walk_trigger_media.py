@@ -5,7 +5,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 from arena.world import Arena, Command, REPO
 from arena.labrob import Labrob, STANDING_POSE, STANDING_BASE_Z
 
-CAM = {"cam_distance": 2.6, "azimuth": 100.0, "elevation": -10.0}
+CAM = {"cam_distance": 3.2, "azimuth": 100.0, "elevation": -5.0}
 
 def gif(mp4, out, span):
     import subprocess
@@ -26,11 +26,15 @@ arena.reset(base_z=STANDING_BASE_Z, joint_pos=STANDING_POSE)
 st = arena.state()
 pol.reset(st)
 
+FPS = 25
+dt = arena.model.opt.timestep
+seconds = 11.0
+n = int(seconds / dt)
+# save exactly FPS frames per sim-second so the mp4 plays back in real time
+save_every = max(1, round(1.0 / (dt * FPS)))
+
 frames = []
 fall_t = None
-seconds = 11.0
-dt = arena.model.opt.timestep
-n = int(seconds / dt)
 last_trigger = -1.0
 PERIOD = 0.8
 for k in range(n):
@@ -43,14 +47,16 @@ for k in range(n):
     arena.set_external_torque(pol.joints, pol.tau_ext)
     if fall_t is None and arena.fallen(st):
         fall_t = st.t
-    if k % 10 == 0:
+    if k % save_every == 0:
         frames.append(arena.render(**CAM))
     arena.step_physics(1)
 
-mp4 = os.path.join(REPO, "output/media", "labrob_walk_trigger.mp4")
+print(f"frames saved: {len(frames)}, expected mp4 duration: {len(frames)/FPS:.2f}s (should be ~{seconds}s)", flush=True)
+
+mp4 = os.path.join(REPO, "output/media", "labrob_walk_trigger2.mp4")
 import imageio.v2 as iio
-iio.mimsave(mp4, frames, fps=25, macro_block_size=8)
-gif(mp4, os.path.join(REPO, "docs/media", "labrob_walk_trigger.gif"), (0.0, seconds))
+iio.mimsave(mp4, frames, fps=FPS, macro_block_size=8)
+gif(mp4, os.path.join(REPO, "docs/media", "labrob_walk_trigger.gif"), (0.0, len(frames)/FPS))
 print("fell" if fall_t is not None else "no fall", fall_t, flush=True)
 import os as _os
 _os._exit(0)
