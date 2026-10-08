@@ -1639,3 +1639,11 @@ Filtering only the position target (alpha 0.2 / 0.1 / 0.05) or only the feed-for
 for q-only alpha 0.05): both must be filtered. Walking, rough and stairs remain unsolved for this formulation; the walking
 failure at ~6.5 s is not characterised yet. Scripts: tools/wbmpc_wholebody_free.py (standing) and
 tools/wbmpc_wholebody_free_scenarios.py (walk / push / crouch / rough / stairs).
+
+### Whole-body walking: low-pass sweep and what the log shows
+
+Walking vx 0.12, N=2 each: alpha 0.2 falls at 1.4-2.0 s, 0.15 at 2.2-2.4 s, 0.12 at 6.7-7.9 s, 0.08 at 7.2 s, 0.03 at 5.9-6.6 s. There is no alpha that sustains
+walking (0/10); alpha 0.1 stays the default because it is the strongest-lag setting that still makes standing stable.
+Per-step log (alpha 0.1): the robot does take alternating steps from t~5 s, then at ~6.1 s it stays on the left foot for ~0.7 s (Fz R = 0)
+while the yaw goes from -20 to -69 degrees, and falls at ~7 s. This is the same "yaw spin on a single stance foot" seen in the
+centroidal MPC before its fix, but the command low-pass alone does not remove it here. Not solved.
